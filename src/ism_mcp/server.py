@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date as _date
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -393,6 +394,99 @@ def ism_coverage_read(project_path: str | None = None, status_filter: str | None
     )
 
     return json.dumps(_manifest_to_json(manifest, status_filter), indent=2)
+
+
+def _is_in_scope(scope: dict, control) -> bool:
+    sections = scope.get("sections")
+    if sections and control.section not in sections:
+        return False
+    classification = scope.get("classification")
+    if classification:
+        try:
+            normalised = cls.normalise_classification(classification)
+        except ValueError:
+            return True  # malformed scope shouldn't prevent inserts
+        if not control.applies.get(normalised, False):
+            return False
+    maturity = scope.get("maturity")
+    if maturity:
+        try:
+            normalised_m = cls.normalise_maturity(maturity)
+        except ValueError:
+            return True
+        if not control.maturity.get(normalised_m, False):
+            return False
+    return True
+
+
+@mcp.tool()
+def ism_coverage_upsert(
+    identifier: str,
+    status: str,
+    how_met: str,
+    last_reviewed: str | None = None,
+    reviewed_by: str | None = None,
+    next_review: str | None = None,
+    files: list[str] | None = None,
+    commits: list[str] | None = None,
+    urls: list[dict] | None = None,
+    attachments: list[dict] | None = None,
+    project_path: str | None = None,
+) -> str:
+    """Create or update one entry in the coverage manifest.
+
+    Validates identifier against the ISM DB, validates status enum, validates that
+    every attachment path resolves on disk and that every url and attachment carries
+    a description. `last_reviewed` defaults to today. Writes are atomic.
+    """
+    path, err = _find_manifest_or_error(project_path)
+    if err is not None:
+        return json.dumps(err)
+    assert path is not None
+
+    conn = _conn()
+    control = store.get_control(conn, identifier)
+    if control is None:
+        return json.dumps(
+            {
+                "error": (
+                    f"no such control: {identifier}. "
+                    "Use ism_search or ism_list_topics to find the right id."
+                )
+            }
+        )
+
+    try:
+        last_reviewed_date = _date.fromisoformat(last_reviewed) if last_reviewed else _date.today()
+        next_review_date = _date.fromisoformat(next_review) if next_review else None
+    except ValueError as e:
+        return json.dumps({"error": f"date format: {e}"})
+
+    entry = coverage.ManifestEntry(
+        identifier=identifier,
+        status=status,
+        how_met=how_met,
+        last_reviewed=last_reviewed_date,
+        reviewed_by=reviewed_by,
+        next_review=next_review_date,
+        files=list(files or []),
+        commits=list(commits or []),
+        urls=list(urls or []),
+        attachments=list(attachments or []),
+    )
+
+    try:
+        result = coverage.upsert_entry(path, entry)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e)})
+
+    manifest = coverage.read_manifest(path)
+    if not _is_in_scope(manifest.scope, control):
+        result["warnings"].append(f"{identifier}: identifier is outside declared scope")
+
+    return json.dumps(result, indent=2)
 
 
 def run() -> None:

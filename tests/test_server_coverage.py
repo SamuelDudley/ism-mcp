@@ -89,3 +89,92 @@ def test_coverage_read_warns_about_identifier_not_in_ism(
     )
     result = json.loads(server.ism_coverage_read())
     assert any("ISM-7777" in w for w in result["warnings"])
+
+
+def test_coverage_upsert_creates_entry(project_with_manifest, project_with_ism_db):
+    result = json.loads(
+        server.ism_coverage_upsert(
+            identifier="ISM-9002",
+            status="covered",
+            how_met="Sessions terminate after 14 min.",
+            files=["src/auth.py:1-20"],
+        )
+    )
+    assert result["ok"] is True
+    assert result["action"] == "created"
+    parsed = json.loads(server.ism_coverage_read())
+    assert "ISM-9002" in parsed["controls"]
+
+
+def test_coverage_upsert_updates_existing_entry(project_with_manifest, project_with_ism_db):
+    server.ism_coverage_upsert(
+        identifier="ISM-9001",
+        status="partial",
+        how_met="Now partial.",
+    )
+    parsed = json.loads(server.ism_coverage_read())
+    assert parsed["controls"]["ISM-9001"]["status"] == "partial"
+
+
+def test_coverage_upsert_rejects_unknown_identifier(project_with_manifest, project_with_ism_db):
+    result = json.loads(
+        server.ism_coverage_upsert(
+            identifier="ISM-9999",
+            status="covered",
+            how_met="x",
+        )
+    )
+    assert "error" in result
+    assert "no such control" in result["error"].lower()
+
+
+def test_coverage_upsert_rejects_invalid_status(project_with_manifest, project_with_ism_db):
+    result = json.loads(
+        server.ism_coverage_upsert(
+            identifier="ISM-9002",
+            status="bogus",
+            how_met="x",
+        )
+    )
+    assert "error" in result
+    assert "status" in result["error"].lower()
+
+
+def test_coverage_upsert_rejects_missing_attachment(project_with_manifest, project_with_ism_db):
+    result = json.loads(
+        server.ism_coverage_upsert(
+            identifier="ISM-9002",
+            status="covered",
+            how_met="x",
+            attachments=[{"path": "nope.png", "description": "x"}],
+        )
+    )
+    assert "error" in result
+    assert "nope.png" in result["error"]
+
+
+def test_coverage_upsert_defaults_last_reviewed_to_today(
+    project_with_manifest, project_with_ism_db
+):
+    from datetime import date as _date
+
+    server.ism_coverage_upsert(
+        identifier="ISM-9002",
+        status="covered",
+        how_met="x",
+    )
+    parsed = json.loads(server.ism_coverage_read())
+    assert parsed["controls"]["ISM-9002"]["last_reviewed"] == _date.today().isoformat()
+
+
+def test_coverage_upsert_warns_out_of_scope(project_with_manifest, project_with_ism_db):
+    # ISM-9002 is section 'Authentication' which is not in scope.sections = ["Encryption", "Audit"].
+    result = json.loads(
+        server.ism_coverage_upsert(
+            identifier="ISM-9002",
+            status="covered",
+            how_met="x",
+        )
+    )
+    assert result["ok"] is True
+    assert any("scope" in w.lower() for w in result["warnings"])
