@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+
 from ism_mcp.embed import DeterministicHashEmbedder, l2_normalise
 
 

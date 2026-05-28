@@ -6,9 +6,11 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
+import numpy as np
 import openpyxl
 import pdfplumber
 
+from .embed import Embedder
 from .store import CLASSIFICATIONS, MATURITIES, Control
 
 CONTROLS_SHEET = "Controls - March 2026"
@@ -144,3 +146,15 @@ def _str_or_none(v) -> str | None:
 
 def _yes(v) -> bool:
     return str(v).strip().lower() == "yes"
+
+
+def embed_controls(controls: list[Control], embedder: Embedder) -> Iterator[tuple[int, bytes]]:
+    """Yield (rowid, normalised float32 BLOB) for each control."""
+    texts = [
+        f"{c.topic}. {c.section}. {c.description} {(c.pdf_excerpt or '')[:500]}" for c in controls
+    ]
+    vectors = embedder.embed(texts)
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors = vectors / np.where(norms < 1e-9, 1.0, norms)
+    for rowid, vec in enumerate(vectors, start=1):
+        yield rowid, vec.astype(np.float32).tobytes()

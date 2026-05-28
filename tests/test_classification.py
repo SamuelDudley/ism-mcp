@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from ism_mcp.classification import normalise_classification, normalise_maturity
 
 

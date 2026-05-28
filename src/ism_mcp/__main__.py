@@ -33,6 +33,24 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     store.set_meta(conn, "xlsx_source", str(xlsx_path))
     if args.revision:
         store.set_meta(conn, "ism_revision", args.revision)
+
+    if args.no_embeddings:
+        print("skipping embeddings (--no-embeddings)", file=sys.stderr)
+    else:
+        from .embed import FastEmbedEmbedder
+        from .ingest import embed_controls
+
+        print(
+            "embedding controls (first run downloads ~130 MB to ~/.cache/fastembed)...",
+            file=sys.stderr,
+        )
+        persisted = [store.get_control(conn, c.identifier) for c in controls]
+        persisted = [c for c in persisted if c is not None]
+        embedder = FastEmbedEmbedder()
+        rows = list(embed_controls(persisted, embedder))
+        store.insert_embeddings(conn, rows)
+        print(f"embedded {len(rows)} controls", file=sys.stderr)
+
     conn.close()
     print(f"done. {len(controls)} controls in {db_path}", file=sys.stderr)
     return 0
@@ -58,6 +76,11 @@ def main() -> int:
     )
     p_ingest.add_argument("--db", help=f"Output database path (default: {server.DEFAULT_DB}).")
     p_ingest.add_argument("--revision", help="Revision label to record (e.g. 2026-03).")
+    p_ingest.add_argument(
+        "--no-embeddings",
+        action="store_true",
+        help="skip embedding generation. Server falls back to lexical-only.",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_serve = sub.add_parser("serve", help="Run the MCP server over stdio.")
