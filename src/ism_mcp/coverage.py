@@ -134,3 +134,73 @@ def validate_entry(entry: ManifestEntry, project_root: Path) -> None:
         resolved = (project_root / a["path"]).resolve()
         if not resolved.is_file():
             raise FileNotFoundError(f"{entry.identifier}: attachment not found: {a['path']}")
+
+
+def serialise_manifest(manifest: Manifest) -> str:
+    """Serialise a Manifest to TOML text. Subset of TOML matching the manifest schema."""
+    lines: list[str] = [f"schema_version = {manifest.schema_version}", ""]
+
+    if manifest.scope:
+        lines.append("[scope]")
+        for key, value in manifest.scope.items():
+            lines.append(f"{key} = {_toml_value(value)}")
+        lines.append("")
+
+    if manifest.project:
+        lines.append("[project]")
+        for key, value in manifest.project.items():
+            lines.append(f"{key} = {_toml_value(value)}")
+        lines.append("")
+
+    for identifier, entry in manifest.controls.items():
+        lines.append(f'[controls."{identifier}"]')
+        lines.append(f"status = {_toml_value(entry.status)}")
+        lines.append(f"how_met = {_toml_multiline(entry.how_met)}")
+        lines.append(f"last_reviewed = {entry.last_reviewed.isoformat()}")
+        if entry.reviewed_by:
+            lines.append(f"reviewed_by = {_toml_value(entry.reviewed_by)}")
+        if entry.next_review:
+            lines.append(f"next_review = {entry.next_review.isoformat()}")
+        if entry.files:
+            lines.append(f"files = {_toml_value(entry.files)}")
+        if entry.commits:
+            lines.append(f"commits = {_toml_value(entry.commits)}")
+        for u in entry.urls:
+            lines.append("")
+            lines.append(f'[[controls."{identifier}".urls]]')
+            lines.append(f"url = {_toml_value(u['url'])}")
+            lines.append(f"description = {_toml_value(u['description'])}")
+        for a in entry.attachments:
+            lines.append("")
+            lines.append(f'[[controls."{identifier}".attachments]]')
+            lines.append(f"path = {_toml_value(a['path'])}")
+            lines.append(f"description = {_toml_value(a['description'])}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _toml_value(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, str):
+        return _toml_string(v)
+    if isinstance(v, list):
+        items = ", ".join(_toml_value(x) for x in v)
+        return f"[{items}]"
+    raise TypeError(f"unsupported TOML value type: {type(v).__name__}")
+
+
+def _toml_string(s: str) -> str:
+    if "\n" not in s and '"' not in s and "\\" not in s:
+        return f'"{s}"'
+    return _toml_multiline(s)
+
+
+def _toml_multiline(s: str) -> str:
+    safe = s.replace("\\", "\\\\").replace('"""', '\\"""')
+    if "\n" not in safe and '"' not in safe:
+        return f'"{safe}"'
+    return f'"""\n{safe}"""'
