@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from datetime import date
@@ -204,3 +206,48 @@ def _toml_multiline(s: str) -> str:
     if "\n" not in safe and '"' not in safe:
         return f'"{safe}"'
     return f'"""\n{safe}"""'
+
+
+def upsert_entry(manifest_path: Path, entry: ManifestEntry) -> dict:
+    """Validate the entry, then write/update it in the manifest atomically.
+
+    Returns a dict with `action` (`"created"` or `"updated"`), `identifier`, and `warnings`.
+    Raises ValueError for invalid entries and FileNotFoundError for missing attachments.
+    """
+    validate_entry(entry, project_root=manifest_path.parent)
+
+    manifest = read_manifest(manifest_path)
+    action = "updated" if entry.identifier in manifest.controls else "created"
+    new_controls = dict(manifest.controls)
+    new_controls[entry.identifier] = entry
+    updated = Manifest(
+        path=manifest.path,
+        schema_version=manifest.schema_version,
+        scope=manifest.scope,
+        project=manifest.project,
+        controls=new_controls,
+        warnings=[],
+    )
+    text = serialise_manifest(updated)
+    _atomic_write(manifest_path, text)
+    return {"ok": True, "identifier": entry.identifier, "action": action, "warnings": []}
+
+
+def _atomic_write(target: Path, text: str) -> None:
+    """Write `text` to `target` atomically via tempfile + os.replace in the same dir."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        prefix=target.name + ".",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, target)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
