@@ -54,45 +54,80 @@ def parse_xlsx(xlsx_path: Path) -> Iterator[Control]:
         )
 
 
-def attach_pdf_excerpts(controls: list[Control], pdf_path: Path) -> list[Control]:
-    """Walk the PDF once, find each ISM identifier occurrence, attach a paragraph excerpt and page number."""
-    excerpts: dict[str, tuple[str, int]] = {}
-    id_re = re.compile(r"\b(ISM-\d{3,4})\b")
+def extract_excerpts_from_lines(
+    lines: list[str], page_of_line: list[int]
+) -> dict[str, tuple[str, int]]:
+    """Return a mapping of identifier to (excerpt, page) for every Control: label.
 
+    The excerpt is the narrative paragraph immediately preceding the control's label line.
+    Looking back across page boundaries is allowed, so a label at the top of a page picks
+    up the trailing narrative from the previous page. The reported page is always the page
+    on which the label itself appears.
+    Consecutive label lines, multiple controls sharing one narrative, all map to the same excerpt.
+    """
+    label_re = re.compile(r"^\s*Control:\s*(ISM-\d{3,4})\b")
+
+    label_positions: list[tuple[int, str]] = []
+    for idx, line in enumerate(lines):
+        m = label_re.match(line)
+        if m:
+            label_positions.append((idx, m.group(1)))
+
+    excerpts: dict[str, tuple[str, int]] = {}
+    i = 0
+    while i < len(label_positions):
+        run_start = i
+        while i + 1 < len(label_positions) and label_positions[i + 1][0] == label_positions[i][0] + 1:
+            i += 1
+        narrative = _paragraph_before(lines, label_positions[run_start][0])
+        label_page = page_of_line[label_positions[run_start][0]]
+        for j in range(run_start, i + 1):
+            excerpts[label_positions[j][1]] = (narrative, label_page)
+        i += 1
+    return excerpts
+
+
+def extract_excerpts_from_text(text: str, page_no: int) -> dict[str, tuple[str, int]]:
+    """Single-page wrapper around extract_excerpts_from_lines."""
+    lines = text.splitlines()
+    return extract_excerpts_from_lines(lines, [page_no] * len(lines))
+
+
+def _paragraph_before(lines: list[str], label_line_idx: int) -> str:
+    end = label_line_idx
+    while end > 0 and not lines[end - 1].strip():
+        end -= 1
+    start = end
+    while start > 0 and lines[start - 1].strip() and not lines[start - 1].lstrip().startswith("Control:"):
+        start -= 1
+    return " ".join(line.strip() for line in lines[start:end] if line.strip())
+
+
+def attach_pdf_excerpts(controls: list[Control], pdf_path: Path) -> list[Control]:
+    """Walk the PDF once, extract per-control excerpts, attach them to controls by identifier."""
+    all_lines: list[str] = []
+    page_of_line: list[int] = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
-            if "ISM-" not in text:
-                continue
-            for paragraph in _paragraphs(text):
-                ids_in_para = set(id_re.findall(paragraph))
-                if not ids_in_para:
-                    continue
-                for cid in ids_in_para:
-                    if cid not in excerpts:
-                        excerpts[cid] = (paragraph.strip(), page_no)
-
+            page_lines = text.splitlines()
+            all_lines.extend(page_lines)
+            page_of_line.extend([page_no] * len(page_lines))
+            all_lines.append("")
+            page_of_line.append(page_no)
+    excerpts = extract_excerpts_from_lines(all_lines, page_of_line)
     return [
         Control(
-            **{**c.as_dict(), "pdf_excerpt": excerpts.get(c.identifier, (None, None))[0],
-               "pdf_page": excerpts.get(c.identifier, (None, None))[1]}
+            **{
+                **c.as_dict(),
+                "pdf_excerpt": excerpts.get(c.identifier, (None, None))[0],
+                "pdf_page": excerpts.get(c.identifier, (None, None))[1],
+            }
         )
         if c.identifier in excerpts
         else c
         for c in controls
     ]
-
-
-def _paragraphs(text: str) -> Iterator[str]:
-    para: list[str] = []
-    for line in text.splitlines():
-        if line.strip():
-            para.append(line)
-        elif para:
-            yield " ".join(para)
-            para = []
-    if para:
-        yield " ".join(para)
 
 
 def _str_or_none(v) -> str | None:
