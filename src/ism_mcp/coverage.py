@@ -97,3 +97,29 @@ def _entry_from_dict(identifier: str, body: dict) -> ManifestEntry:
         urls=[dict(u) for u in (body.get("urls") or [])],
         attachments=[dict(a) for a in (body.get("attachments") or [])],
     )
+
+
+VALID_STATUSES: frozenset[str] = frozenset(["covered", "partial", "not-applicable", "deferred"])
+
+
+def validate_entry(entry: ManifestEntry, project_root: Path) -> None:
+    """Raise ValueError or FileNotFoundError if the entry is invalid for this project."""
+    if entry.status not in VALID_STATUSES:
+        raise ValueError(
+            f"{entry.identifier}: status {entry.status!r} not one of {sorted(VALID_STATUSES)}"
+        )
+    if not entry.how_met or not entry.how_met.strip():
+        raise ValueError(f"{entry.identifier}: how_met is required and must be non-empty")
+    for u in entry.urls:
+        if "url" not in u:
+            raise ValueError(f"{entry.identifier}: url entry missing 'url' key")
+        if "description" not in u or not u["description"].strip():
+            raise ValueError(f"{entry.identifier}: url {u['url']!r} missing description")
+    for a in entry.attachments:
+        if "path" not in a:
+            raise ValueError(f"{entry.identifier}: attachment entry missing 'path' key")
+        if "description" not in a or not a["description"].strip():
+            raise ValueError(f"{entry.identifier}: attachment {a['path']!r} missing description")
+        resolved = (project_root / a["path"]).resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(f"{entry.identifier}: attachment not found: {a['path']}")
