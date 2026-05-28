@@ -106,3 +106,36 @@ def test_reset_drops_embeddings(db, sample_controls):
     store.reset(db)
     _matrix, ids = store.load_embedding_matrix(db, dim=4)
     assert ids == []
+
+
+def test_list_in_scope_filters_by_classification(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    rows = store.list_in_scope(db, classification="NC", maturity=None, sections=None)
+    assert {c.identifier for c in rows} == {"ISM-9001", "ISM-9002"}
+
+
+def test_list_in_scope_filters_by_maturity(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    rows = store.list_in_scope(db, classification="NC", maturity="ML1", sections=None)
+    assert {c.identifier for c in rows} == {"ISM-9002"}
+
+
+def test_list_in_scope_filters_by_sections(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    rows = store.list_in_scope(
+        db, classification=None, maturity=None, sections=["Encryption", "Audit"]
+    )
+    assert {c.identifier for c in rows} == {"ISM-9001", "ISM-9003"}
+
+
+def test_list_in_scope_combines_all_filters(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    rows = store.list_in_scope(
+        db, classification="TS", maturity="ML3", sections=["Audit"]
+    )
+    assert {c.identifier for c in rows} == {"ISM-9003"}
+
+
+def test_list_in_scope_rejects_unknown_classification(db):
+    with pytest.raises(ValueError, match="classification"):
+        store.list_in_scope(db, classification="XX", maturity=None, sections=None)

@@ -209,6 +209,39 @@ def list_by_classification(conn: sqlite3.Connection, classification: str) -> lis
     return [_row_to_control(r) for r in rows]
 
 
+def list_in_scope(
+    conn: sqlite3.Connection,
+    classification: str | None,
+    maturity: str | None,
+    sections: list[str] | None,
+) -> list[Control]:
+    """Controls matching all supplied filters. Each filter is optional."""
+    where: list[str] = []
+    params: list = []
+    if classification is not None:
+        cls = classification.upper()
+        if cls not in CLASSIFICATIONS:
+            raise ValueError(
+                f"unknown classification {classification!r}, expected one of {CLASSIFICATIONS}"
+            )
+        where.append(f"applies_{cls.lower()} = 1")
+    if maturity is not None:
+        ml = maturity.upper()
+        if ml not in MATURITIES:
+            raise ValueError(f"unknown maturity {maturity!r}, expected one of {MATURITIES}")
+        where.append(f"maturity_{ml.lower()} = 1")
+    if sections:
+        placeholders = ",".join(["?"] * len(sections))
+        where.append(f"section IN ({placeholders})")
+        params.extend(sections)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = conn.execute(
+        f"SELECT * FROM controls {clause} ORDER BY identifier",
+        params,
+    ).fetchall()
+    return [_row_to_control(r) for r in rows]
+
+
 def list_by_topic(conn: sqlite3.Connection, topic: str) -> list[Control]:
     rows = conn.execute(
         "SELECT * FROM controls WHERE topic = ? ORDER BY identifier",
