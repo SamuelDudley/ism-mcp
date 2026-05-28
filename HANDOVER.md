@@ -8,7 +8,9 @@
 
 ## Where we are
 
-Hardening and hybrid discovery merged. The MCP server now exposes:
+Sub-projects A (hardening) and B (hybrid discovery) are merged. Sub-project D (coverage manifest) is **designed and planned but not yet executed**.
+
+The MCP server currently exposes:
 
 - `ism_applicable(work, ...)` for ranked discovery against a free-text work description.
 - `ism_list_sections`, `ism_list_classifications`, `ism_list_maturities` as enum helpers.
@@ -16,7 +18,16 @@ Hardening and hybrid discovery merged. The MCP server now exposes:
 
 Embeddings are generated at ingest by `bge-small-en-v1.5` via `fastembed`. The default DB at `~/.local/share/ism-mcp/ism.db` includes the `controls_embeddings` sidecar table.
 
-The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is now 78 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
+The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 78 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
+
+The MCP server is registered at user scope in Claude Code (`claude mcp list` shows `ism: ✓ Connected`) and is reachable from any project. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
+
+Sub-project D artefacts already on `main`:
+
+- `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md` — full design spec.
+- `docs/plans/2026-05-28-coverage-manifest.md` — 13-task executable plan.
+
+The plan is approved and ready. Execution paused at the user's request before Task 1.
 
 ## Repository layout
 
@@ -76,13 +87,21 @@ CI should print `==> CI OK`. Slow suite: `./scripts/ci.sh slow`.
 
 ## Next action
 
-Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and pick the next sub-project. The natural order is:
+**Execute the coverage-manifest plan at `docs/plans/2026-05-28-coverage-manifest.md`.**
 
-1. **Sub-project C: Graph and curated cuts.** `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs a brainstorm cycle before a plan is written.
-2. **Sub-project D: Project coverage manifest.** `.ism-coverage.toml` in consumer repos, `ism_coverage_read/add/gaps`. Depends on the embeddings from sub-project B.
-3. **Sub-project E: Consumer install helper.** `ism-mcp install --project PATH`. Depends on D's manifest format.
+The plan adds `.ism-coverage.toml` and three MCP tools (`ism_coverage_read`, `ism_coverage_upsert`, `ism_coverage_gaps`) for per-project IRAP-grade coverage tracking. 13 tasks, no new top-level dependencies. Reference spec at `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md`.
 
-Each of C, D, E gets its own brainstorm and design doc before a plan is written.
+Decisions locked in during brainstorming:
+
+- Primary use case: audit evidence (IRAP), secondary gap detection.
+- Manifest lives at `.ism-coverage.toml` in the consumer repo root, with recommended binary evidence at `.ism-coverage/evidence/`.
+- Top-level `[scope]` declaration (classification + maturity + optional sections). Sparse per-control entries. Agent proactively flags gaps via `ism_coverage_gaps`.
+- Four statuses: `covered | partial | not-applicable | deferred`. Uncurated (no entry) is also a gap.
+- Typed evidence arrays: `files`, `commits` as strings; `urls` and `attachments` as structured `{url|path, description}` because they're opaque to the agent and to offline auditors.
+- `tomllib` for read, hand-rolled serialiser for write. No `tomli_w` dep.
+- Lean 3-tool surface: read, upsert, gaps. Writes are direct (atomic via tempfile + os.replace); git review on the manifest is the audit guardrail.
+
+After D lands, the next pick is either C (graph and curated cuts) or E (consumer install helper). Both need their own brainstorm cycles.
 
 ## Roadmap
 
@@ -90,9 +109,9 @@ Each of C, D, E gets its own brainstorm and design doc before a plan is written.
 |---|---|---|
 | done | A: Hardening | Pytest, ruff, pyright, CI, per-control PDF excerpts. |
 | done | B: Hybrid discovery | `ism_applicable`, embeddings, RRF, helpers. |
-| next | C: Graph and curated cuts | `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs brainstorm. |
-| | D: Project coverage manifest | `.ism-coverage.toml`, `ism_coverage_read/add/gaps`. Depends on B. |
-| | E: Consumer install helper | `ism-mcp install --project PATH`. Depends on D. |
+| next | D: Project coverage manifest | `.ism-coverage.toml`, `ism_coverage_read/upsert/gaps`. Designed and planned, ready to execute. |
+| | C: Graph and curated cuts | `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs brainstorm. |
+| | E: Consumer install helper | `ism-mcp install --project PATH`. Needs brainstorm. Unblocked by D landing. |
 
 Deferred (revisit when consumers ask): revision diff, HTTP/SSE transport, PyPI publish, coverage gate in CI.
 
@@ -127,7 +146,7 @@ See `CLAUDE.md` for the canonical list. Highlights:
 1. Read this file (you're here).
 2. Read `CLAUDE.md` for working conventions.
 3. Run the verification block in the "Verifying current state" section above.
-4. Read `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` for the multi-sub-project context.
-5. Brainstorm sub-project C, then write a plan under `docs/plans/`.
+4. Read `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md` for sub-project D context.
+5. Open `docs/plans/2026-05-28-coverage-manifest.md` and start executing from Task 1.
 
-Branch state: `main` is the active branch. `feature/hardening-and-tests` and `feature/hybrid-discovery` were fast-forward merged and deleted. No remote configured.
+Branch state: `main` is the active branch. `feature/hardening-and-tests` and `feature/hybrid-discovery` were fast-forward merged and deleted. No active feature branch for sub-project D yet. No remote configured.
