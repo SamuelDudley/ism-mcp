@@ -83,14 +83,62 @@ The CI script is the source of truth for what counts as a passing build. Run it 
 
 | Tool | Purpose |
 |---|---|
+| `ism_applicable(work, classification?, maturity?, tags?, paths?, limit?, verbose?)` | Hybrid retrieval: rank controls relevant to a free-text description of planned or current work. Recommended default for discovery. |
 | `ism_get(identifier)` | Full record for one control by ID. |
-| `ism_search(query, limit=10)` | Full-text search over description, topic, section, guideline. |
-| `ism_list_by_classification(classification)` | Filter to controls applicable at NC / OS / P / S / TS. |
-| `ism_list_topics()` | All distinct topic strings (~440). |
-| `ism_list_by_topic(topic)` | Controls under a specific topic (exact match). |
-| `ism_stats()` | Total control count, ingested revision, source paths. |
+| `ism_search(query, limit=10)` | Deterministic FTS5 search. Use when you know the exact term. |
+| `ism_list_by_classification(classification)` | Controls applicable at NC / OS / P / S / TS. |
+| `ism_list_topics()` | Distinct topic strings. |
+| `ism_list_by_topic(topic)` | Controls under a topic. |
+| `ism_list_sections()` | Distinct section strings. The vocabulary for the `tags` filter on `ism_applicable`. |
+| `ism_list_classifications()` | Canonical classification enum plus friendly aliases. |
+| `ism_list_maturities()` | Essential Eight maturity levels. |
+| `ism_stats()` | Database statistics. |
 
 Each `Control` record carries: `identifier`, `guideline`, `section`, `topic`, `revision`, `updated`, `description`, classification applicability (`NC/OS/P/S/TS`), maturity applicability (`ML1/ML2/ML3`), `pdf_excerpt`, `pdf_page`.
+
+## Discovery for agents
+
+The headline use case is `ism_applicable`. The agent describes the work in plain language, optionally narrows by classification, maturity, section tags, or repo paths, and gets back a ranked list of relevant controls.
+
+```python
+ism_applicable(
+    work="adding JWT refresh and idle session timeout to our auth flow",
+    classification="OFFICIAL",
+    maturity="ML2",
+    paths=["src/auth/jwt.py", "src/auth/session.py"],
+    limit=10,
+)
+```
+
+Returns a ranked list with `identifier`, `topic`, `section`, `description`, `applies`, `maturity`, a normalised RRF `score` in `[0.0, 1.0]`, and a `why` list naming the signals that surfaced each result (`semantic`, `lexical`, `path:<token>`). `verbose=true` adds the PDF excerpt.
+
+Under the hood: a `bge-small-en-v1.5` embedding of the work text is cosine-matched against per-control embeddings, fused with FTS5 BM25 via Reciprocal Rank Fusion, then post-filtered.
+
+### First-run network requirement
+
+The first ingest after install downloads the embedding model (~130 MB) to `~/.cache/fastembed/`. Subsequent runs are offline. To pre-warm:
+
+```bash
+uv run python -c "
+from fastembed import TextEmbedding
+TextEmbedding('BAAI/bge-small-en-v1.5')
+"
+```
+
+To skip embeddings entirely (offline first run, or for fast iteration during development):
+
+```bash
+uv run ism-mcp ingest --xlsx PATH --pdf PATH --no-embeddings
+```
+
+Without embeddings, `ism_applicable` falls back to lexical-only ranking. Results are still useful but recall on natural-language queries is lower.
+
+### Environment variables
+
+| Var | Values | Effect |
+|---|---|---|
+| `ISM_MCP_DB` | path | Override the database location. Default `~/.local/share/ism-mcp/ism.db`. |
+| `ISM_MCP_EMBEDDER` | `fastembed` (default), `hash`, `none` | Force a specific embedder at server start. `hash` is test-only. `none` disables semantic retrieval. |
 
 ## Architecture
 
