@@ -68,6 +68,17 @@ for r in store.search(conn, "session timeout", limit=5):
     print(r.identifier, r.topic)
 ```
 
+## Development
+
+```bash
+uv sync                    install all deps including dev
+uv run pytest              run the test suite
+./scripts/ci.sh            full CI suite (fmt + lint + type + test)
+./scripts/ci.sh test       single stage
+```
+
+The CI script is the source of truth for what counts as a passing build. Run it before pushing.
+
 ## MCP tools
 
 | Tool | Purpose |
@@ -95,11 +106,10 @@ ism-mcp/
 
 Single SQLite file. One table for controls plus an FTS5 virtual table kept in sync via an `AFTER INSERT` trigger. A `meta` table records the ingested revision and source paths for `ism_stats`.
 
-## Known limitations of the proto
+## Known limitations
 
-- **PDF excerpts are subsection-wide.** The paragraph extractor groups by blank line, so excerpts often contain multiple controls' surrounding context. The authoritative short text is always the XLSX `description`. Refining to per-control excerpts is a follow-up.
 - **No incremental updates.** Each ingest drops and rebuilds the database.
-- **Single-revision database.** No history across ISM revisions. To diff two revisions, ingest into two database paths and diff.
+- **Single-revision database.** No history across ISM revisions. To diff two revisions, ingest into two database paths and diff externally.
 - **No auth on the MCP server.** Suitable for local use only.
 
 ## Licence
