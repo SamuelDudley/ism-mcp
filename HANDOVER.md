@@ -4,23 +4,19 @@
 
 ## What this is
 
-`ism-mcp` is a local MCP server that exposes the ASD Information Security Manual as queryable, agent-friendly tools. The ISM PDF is ~700 pages and doesn't fit in a model context window. This server parses the official Cloud Controls Matrix XLSX into SQLite, attaches surrounding-paragraph excerpts from the PDF, and exposes six lookup tools over stdio.
+`ism-mcp` is a local MCP server that exposes the ASD Information Security Manual as queryable, agent-friendly tools. The ISM PDF is ~700 pages and doesn't fit in a model context window. This server parses the official Cloud Controls Matrix XLSX into SQLite, attaches surrounding-paragraph excerpts from the PDF, and exposes lookup tools over stdio.
 
 ## Where we are
 
-Prototype hardened. The proto now has:
+Hardening and hybrid discovery merged. The MCP server now exposes:
 
-- 1081 controls ingested with 100% per-control PDF excerpt coverage (median excerpt ~194 chars, down from ~3500).
-- Pytest suite with hermetic fixtures, 17 tests covering store, XLSX parser, and per-control excerpt extractor.
-- Ruff and pyright configured, both clean.
-- `scripts/ci.sh` as the local source of truth for fmt + lint + type + test.
-- Six MCP tools register and return JSON.
+- `ism_applicable(work, ...)` for ranked discovery against a free-text work description.
+- `ism_list_sections`, `ism_list_classifications`, `ism_list_maturities` as enum helpers.
+- The original six tools (`ism_get`, `ism_search`, etc.) unchanged.
 
-The vision and the next plan are written but not yet executed:
+Embeddings are generated at ingest by `bge-small-en-v1.5` via `fastembed`. The default DB at `~/.local/share/ism-mcp/ism.db` includes the `controls_embeddings` sidecar table.
 
-- `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` — multi-sub-project roadmap (A→E).
-- `docs/superpowers/specs/2026-05-28-ism-mcp-hybrid-discovery-design.md` — detailed design for sub-project B.
-- `docs/plans/2026-05-28-hybrid-discovery.md` — 12-task executable plan for sub-project B.
+The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is now 78 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
 
 ## Repository layout
 
@@ -56,9 +52,12 @@ from ism_mcp import store, server
 conn = store.open_db(server.DEFAULT_DB)
 print('controls:', store.count_controls(conn))
 print('topics:  ', len(store.list_topics(conn)))
+print('sections:', len(store.list_sections(conn)))
 print('rev:     ', store.get_meta(conn, 'ism_revision'))
 c = store.get_control(conn, 'ISM-1781')
 print('excerpt len:', len(c.pdf_excerpt or ''))
+_matrix, ids = store.load_embedding_matrix(conn, dim=384)
+print('embeddings:', len(ids))
 "
 ```
 
@@ -67,33 +66,31 @@ Expected output:
 ```
 controls: 1081
 topics:   444
+sections: 69
 rev:      2026-03
 excerpt len: 708
+embeddings: 1081
 ```
 
-CI should print `==> CI OK`.
+CI should print `==> CI OK`. Slow suite: `./scripts/ci.sh slow`.
 
 ## Next action
 
-**Execute the hybrid-discovery plan at `docs/plans/2026-05-28-hybrid-discovery.md`.**
+Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and pick the next sub-project. The natural order is:
 
-That plan adds `ism_applicable(work, classification?, maturity?, tags?, paths?)` — a hybrid retrieval tool that ranks controls relevant to a free-text work description using vector embeddings (`bge-small-en-v1.5` via `fastembed`) fused with FTS5 BM25, layered with classification, maturity, tag, and repo-path filters. 12 tasks.
+1. **Sub-project C: Graph and curated cuts.** `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs a brainstorm cycle before a plan is written.
+2. **Sub-project D: Project coverage manifest.** `.ism-coverage.toml` in consumer repos, `ism_coverage_read/add/gaps`. Depends on the embeddings from sub-project B.
+3. **Sub-project E: Consumer install helper.** `ism-mcp install --project PATH`. Depends on D's manifest format.
 
-Reference spec: `docs/superpowers/specs/2026-05-28-ism-mcp-hybrid-discovery-design.md`. Decisions locked in during brainstorming:
+Each of C, D, E gets its own brainstorm and design doc before a plan is written.
 
-- BLOB + numpy in-memory matrix for vector storage (not sqlite-vec, not DuckDB). Reasoning in the spec.
-- `fastembed` for embeddings (pure ONNX, no torch). First run downloads ~130 MB to `~/.cache/fastembed/`.
-- Reciprocal Rank Fusion, k=60, normalised to [0, 1].
-- Filters apply post-RRF, never pre-retrieval.
-- `--no-embeddings` ingest flag falls back to lexical-only.
-
-## Roadmap beyond the next plan
+## Roadmap
 
 | Plan | Sub-project | Scope sketch |
 |---|---|---|
 | done | A: Hardening | Pytest, ruff, pyright, CI, per-control PDF excerpts. |
-| next | B: Hybrid discovery | `ism_applicable`, embeddings, RRF, helpers. |
-| | C: Graph and curated cuts | `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs brainstorm. |
+| done | B: Hybrid discovery | `ism_applicable`, embeddings, RRF, helpers. |
+| next | C: Graph and curated cuts | `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs brainstorm. |
 | | D: Project coverage manifest | `.ism-coverage.toml`, `ism_coverage_read/add/gaps`. Depends on B. |
 | | E: Consumer install helper | `ism-mcp install --project PATH`. Depends on D. |
 
@@ -131,6 +128,6 @@ See `CLAUDE.md` for the canonical list. Highlights:
 2. Read `CLAUDE.md` for working conventions.
 3. Run the verification block in the "Verifying current state" section above.
 4. Read `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` for the multi-sub-project context.
-5. Open `docs/plans/2026-05-28-hybrid-discovery.md` and start executing.
+5. Brainstorm sub-project C, then write a plan under `docs/plans/`.
 
-Branch state: `main` is the active branch. `feature/hardening-and-tests` was fast-forward merged and deleted. No remote configured.
+Branch state: `main` is the active branch. `feature/hardening-and-tests` and `feature/hybrid-discovery` were fast-forward merged and deleted. No remote configured.
