@@ -251,3 +251,91 @@ def _atomic_write(target: Path, text: str) -> None:
         except OSError:
             pass
         raise
+
+
+_STATUS_PRIORITY = {"uncurated": 0, "partial": 1, "deferred": 2}
+
+
+def compute_gaps(
+    manifest: Manifest,
+    in_scope: list,
+    applicable: list[dict] | None = None,
+    limit: int = 50,
+) -> dict:
+    """Compute outstanding controls relative to the manifest.
+
+    `in_scope` is the list of Control-like objects (anything with `identifier`, `topic`,
+    `section`, `description` attributes) in the project's declared scope.
+    `applicable` is the optional output of `ism_applicable`: a list of dicts each
+    containing at least `identifier`, `score`, `why`. When provided, gaps are
+    intersected with this list and ordered by score descending.
+    """
+    covered = {
+        ident for ident, e in manifest.controls.items() if e.status in ("covered", "not-applicable")
+    }
+
+    def _current_status(identifier: str) -> str:
+        entry = manifest.controls.get(identifier)
+        return entry.status if entry else "uncurated"
+
+    def _current_entry(identifier: str) -> dict | None:
+        entry = manifest.controls.get(identifier)
+        if entry is None:
+            return None
+        return {
+            "how_met": entry.how_met,
+            "last_reviewed": entry.last_reviewed.isoformat(),
+        }
+
+    by_id = {c.identifier: c for c in in_scope}
+
+    if applicable is None:
+        candidates = [c for c in in_scope if c.identifier not in covered]
+        candidates.sort(
+            key=lambda c: (
+                _STATUS_PRIORITY.get(_current_status(c.identifier), 99),
+                c.identifier,
+            )
+        )
+        gaps = []
+        for c in candidates:
+            status = _current_status(c.identifier)
+            gap: dict = {
+                "identifier": c.identifier,
+                "topic": c.topic,
+                "section": c.section,
+                "description": c.description,
+                "current_status": status,
+            }
+            ce = _current_entry(c.identifier)
+            if ce is not None:
+                gap["current_entry"] = ce
+            gaps.append(gap)
+        total = len(gaps)
+        return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
+
+    # Work-aware: intersect with applicable, preserve applicable's score-descending order.
+    gaps = []
+    for entry in applicable:
+        ident = entry["identifier"]
+        if ident in covered:
+            continue
+        if ident not in by_id:
+            continue  # outside scope
+        c = by_id[ident]
+        status = _current_status(ident)
+        gap = {
+            "identifier": ident,
+            "topic": c.topic,
+            "section": c.section,
+            "description": c.description,
+            "current_status": status,
+            "score": entry.get("score"),
+            "why": entry.get("why"),
+        }
+        ce = _current_entry(ident)
+        if ce is not None:
+            gap["current_entry"] = ce
+        gaps.append(gap)
+    total = len(gaps)
+    return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
