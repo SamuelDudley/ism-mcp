@@ -10,7 +10,6 @@ from mcp.server.fastmcp import FastMCP
 
 from . import store
 
-
 DEFAULT_DB = Path(os.environ.get("ISM_MCP_DB", Path.home() / ".local/share/ism-mcp/ism.db"))
 
 
@@ -56,7 +55,11 @@ def ism_list_by_classification(classification: str) -> str:
     except ValueError as e:
         return json.dumps({"error": str(e)})
     return json.dumps(
-        {"classification": classification.upper(), "count": len(results), "identifiers": [c.identifier for c in results]},
+        {
+            "classification": classification.upper(),
+            "count": len(results),
+            "identifiers": [c.identifier for c in results],
+        },
         indent=2,
     )
 

@@ -13,33 +13,96 @@ from ism_mcp.ingest import parse_xlsx
 def _write_workbook(path: Path) -> None:
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
     ws.title = "Controls - January 2026"
     ws.append(["ISM Controls"] + [""] * 24)
-    ws.append([
-        "Guideline", "Section", "Topic", "Identifier", "Revision", "Updated",
-        "NC", "OS", "P", "S", "TS",
-        "ML1", "ML2", "ML3",
-        "Description",
-        "Scoping1", "Scoping2", "Scoping3",
-        "Provider", "Implementation Status", "Comments",
-        "Consumer Responsibility", "Consumer Impl", "Consumer Config", "Comments",
-    ])
-    ws.append([
-        "Guidelines for testing", "Encryption", "Network encryption",
-        "ISM-9001", "1", "Jan-26",
-        "Yes", "Yes", "Yes", "No", "No",
-        "Yes", "No", "No",
-        "All data communicated over network infrastructure is encrypted.",
-        "", "", "", "", "Not Assessed", "", "", "Not Assessed", "Not Assessed", "",
-    ])
-    ws.append([
-        "Guidelines for testing", "Audit", "Event logging",
-        "ISM-9002", "2", "Feb-26",
-        "No", "No", "Yes", "Yes", "Yes",
-        "No", "Yes", "Yes",
-        "Events are logged to a centralised facility.",
-        "", "", "", "", "Not Assessed", "", "", "Not Assessed", "Not Assessed", "",
-    ])
+    ws.append(
+        [
+            "Guideline",
+            "Section",
+            "Topic",
+            "Identifier",
+            "Revision",
+            "Updated",
+            "NC",
+            "OS",
+            "P",
+            "S",
+            "TS",
+            "ML1",
+            "ML2",
+            "ML3",
+            "Description",
+            "Scoping1",
+            "Scoping2",
+            "Scoping3",
+            "Provider",
+            "Implementation Status",
+            "Comments",
+            "Consumer Responsibility",
+            "Consumer Impl",
+            "Consumer Config",
+            "Comments",
+        ]
+    )
+    ws.append(
+        [
+            "Guidelines for testing",
+            "Encryption",
+            "Network encryption",
+            "ISM-9001",
+            "1",
+            "Jan-26",
+            "Yes",
+            "Yes",
+            "Yes",
+            "No",
+            "No",
+            "Yes",
+            "No",
+            "No",
+            "All data communicated over network infrastructure is encrypted.",
+            "",
+            "",
+            "",
+            "",
+            "Not Assessed",
+            "",
+            "",
+            "Not Assessed",
+            "Not Assessed",
+            "",
+        ]
+    )
+    ws.append(
+        [
+            "Guidelines for testing",
+            "Audit",
+            "Event logging",
+            "ISM-9002",
+            "2",
+            "Feb-26",
+            "No",
+            "No",
+            "Yes",
+            "Yes",
+            "Yes",
+            "No",
+            "Yes",
+            "Yes",
+            "Events are logged to a centralised facility.",
+            "",
+            "",
+            "",
+            "",
+            "Not Assessed",
+            "",
+            "",
+            "Not Assessed",
+            "Not Assessed",
+            "",
+        ]
+    )
     wb.save(path)
 
 
@@ -64,17 +127,67 @@ def test_parse_skips_non_ism_rows(tmp_path):
     workbook = tmp_path / "ccm.xlsx"
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
     ws.title = "Controls - January 2026"
     ws.append(["ISM Controls"] + [""] * 24)
-    ws.append([
-        "Guideline", "Section", "Topic", "Identifier", "Revision", "Updated",
-        "NC", "OS", "P", "S", "TS",
-        "ML1", "ML2", "ML3",
-        "Description",
-        "x", "x", "x", "x", "x", "x", "x", "x", "x", "x",
-    ])
-    ws.append(["g", "s", "t", "not-an-id", "1", "Jan-26", "Yes", "Yes", "Yes", "No", "No",
-               "No", "No", "No", "desc", "", "", "", "", "", "", "", "", "", ""])
+    ws.append(
+        [
+            "Guideline",
+            "Section",
+            "Topic",
+            "Identifier",
+            "Revision",
+            "Updated",
+            "NC",
+            "OS",
+            "P",
+            "S",
+            "TS",
+            "ML1",
+            "ML2",
+            "ML3",
+            "Description",
+            "x",
+            "x",
+            "x",
+            "x",
+            "x",
+            "x",
+            "x",
+            "x",
+            "x",
+            "x",
+        ]
+    )
+    ws.append(
+        [
+            "g",
+            "s",
+            "t",
+            "not-an-id",
+            "1",
+            "Jan-26",
+            "Yes",
+            "Yes",
+            "Yes",
+            "No",
+            "No",
+            "No",
+            "No",
+            "No",
+            "desc",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ]
+    )
     wb.save(workbook)
     assert list(parse_xlsx(workbook)) == []
 
@@ -82,7 +195,9 @@ def test_parse_skips_non_ism_rows(tmp_path):
 def test_parse_raises_when_controls_sheet_missing(tmp_path):
     workbook = tmp_path / "empty.xlsx"
     wb = openpyxl.Workbook()
-    wb.active.title = "OnlyInfo"
+    ws = wb.active
+    assert ws is not None
+    ws.title = "OnlyInfo"
     wb.save(workbook)
-    with pytest.raises(ValueError, match="no 'Controls - ...' sheet"):
+    with pytest.raises(ValueError, match=r"no 'Controls"):
         list(parse_xlsx(workbook))

@@ -11,7 +11,7 @@ from ism_mcp import store
 
 
 @pytest.fixture
-def db() -> Generator[sqlite3.Connection, None, None]:
+def db() -> Generator[sqlite3.Connection]:
     """An empty in-memory SQLite database with the ism-mcp schema applied."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

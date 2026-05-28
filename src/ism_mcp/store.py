@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -94,7 +93,9 @@ def open_db(path: Path) -> sqlite3.Connection:
 
 
 def reset(conn: sqlite3.Connection) -> None:
-    conn.executescript("DROP TABLE IF EXISTS controls_fts; DROP TABLE IF EXISTS controls; DROP TABLE IF EXISTS meta;")
+    conn.executescript(
+        "DROP TABLE IF EXISTS controls_fts; DROP TABLE IF EXISTS controls; DROP TABLE IF EXISTS meta;"
+    )
     conn.executescript(SCHEMA)
 
 
@@ -125,11 +126,23 @@ def insert_controls(conn: sqlite3.Connection, controls: Iterable[Control]) -> in
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                c.identifier, c.guideline, c.section, c.topic, c.revision, c.updated, c.description,
-                int(c.applies["NC"]), int(c.applies["OS"]), int(c.applies["P"]),
-                int(c.applies["S"]), int(c.applies["TS"]),
-                int(c.maturity["ML1"]), int(c.maturity["ML2"]), int(c.maturity["ML3"]),
-                c.pdf_excerpt, c.pdf_page,
+                c.identifier,
+                c.guideline,
+                c.section,
+                c.topic,
+                c.revision,
+                c.updated,
+                c.description,
+                int(c.applies["NC"]),
+                int(c.applies["OS"]),
+                int(c.applies["P"]),
+                int(c.applies["S"]),
+                int(c.applies["TS"]),
+                int(c.maturity["ML1"]),
+                int(c.maturity["ML2"]),
+                int(c.maturity["ML3"]),
+                c.pdf_excerpt,
+                c.pdf_page,
             ),
         )
         count += 1
@@ -175,7 +188,9 @@ def search(conn: sqlite3.Connection, query: str, limit: int = 10) -> list[Contro
 def list_by_classification(conn: sqlite3.Connection, classification: str) -> list[Control]:
     cls = classification.upper()
     if cls not in CLASSIFICATIONS:
-        raise ValueError(f"unknown classification {classification!r}, expected one of {CLASSIFICATIONS}")
+        raise ValueError(
+            f"unknown classification {classification!r}, expected one of {CLASSIFICATIONS}"
+        )
     rows = conn.execute(
         f"SELECT * FROM controls WHERE applies_{cls.lower()} = 1 ORDER BY identifier"
     ).fetchall()

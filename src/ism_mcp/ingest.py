@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import openpyxl
 import pdfplumber
 
 from .store import CLASSIFICATIONS, MATURITIES, Control
-
 
 CONTROLS_SHEET = "Controls - March 2026"
 HEADER_ROW = 2
@@ -46,8 +45,8 @@ def parse_xlsx(xlsx_path: Path) -> Iterator[Control]:
             guideline=str(row[col["Guideline"]] or "").strip(),
             section=str(row[col["Section"]] or "").strip(),
             topic=str(row[col["Topic"]] or "").strip(),
-            revision=_str_or_none(row[col.get("Revision")]) if "Revision" in col else None,
-            updated=_str_or_none(row[col.get("Updated")]) if "Updated" in col else None,
+            revision=_str_or_none(row[col["Revision"]]) if "Revision" in col else None,
+            updated=_str_or_none(row[col["Updated"]]) if "Updated" in col else None,
             description=str(row[col["Description"]] or "").strip(),
             applies={c: _yes(row[col[c]]) if c in col else False for c in CLASSIFICATIONS},
             maturity={m: _yes(row[col[m]]) if m in col else False for m in MATURITIES},
@@ -77,7 +76,9 @@ def extract_excerpts_from_lines(
     i = 0
     while i < len(label_positions):
         run_start = i
-        while i + 1 < len(label_positions) and label_positions[i + 1][0] == label_positions[i][0] + 1:
+        while (
+            i + 1 < len(label_positions) and label_positions[i + 1][0] == label_positions[i][0] + 1
+        ):
             i += 1
         narrative = _paragraph_before(lines, label_positions[run_start][0])
         label_page = page_of_line[label_positions[run_start][0]]
@@ -98,7 +99,11 @@ def _paragraph_before(lines: list[str], label_line_idx: int) -> str:
     while end > 0 and not lines[end - 1].strip():
         end -= 1
     start = end
-    while start > 0 and lines[start - 1].strip() and not lines[start - 1].lstrip().startswith("Control:"):
+    while (
+        start > 0
+        and lines[start - 1].strip()
+        and not lines[start - 1].lstrip().startswith("Control:")
+    ):
         start -= 1
     return " ".join(line.strip() for line in lines[start:end] if line.strip())
 

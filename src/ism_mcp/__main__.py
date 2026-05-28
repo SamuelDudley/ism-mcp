@@ -49,9 +49,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="ism-mcp")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_ingest = sub.add_parser("ingest", help="Parse an ISM XLSX (+ optional PDF) into the local database.")
+    p_ingest = sub.add_parser(
+        "ingest", help="Parse an ISM XLSX (+ optional PDF) into the local database."
+    )
     p_ingest.add_argument("--xlsx", required=True, help="Path to the Cloud Controls Matrix XLSX.")
-    p_ingest.add_argument("--pdf", help="Optional path to the ISM PDF for per-control text excerpts.")
+    p_ingest.add_argument(
+        "--pdf", help="Optional path to the ISM PDF for per-control text excerpts."
+    )
     p_ingest.add_argument("--db", help=f"Output database path (default: {server.DEFAULT_DB}).")
     p_ingest.add_argument("--revision", help="Revision label to record (e.g. 2026-03).")
     p_ingest.set_defaults(func=cmd_ingest)
