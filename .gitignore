@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# uv
+.uv-cache/
+
+# Build outputs
+build/
+dist/
+
+# Local data
+data/*.db
+data/*.db-journal
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
