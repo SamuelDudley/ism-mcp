@@ -68,13 +68,24 @@ def read_manifest_text(text: str, manifest_path: Path) -> Manifest:
     for identifier, body in (raw.get("controls") or {}).items():
         controls[identifier] = _entry_from_dict(identifier, body)
 
+    project_root = manifest_path.parent
+    warnings: list[str] = []
+    for ident, entry in controls.items():
+        for a in entry.attachments:
+            path_ref = a.get("path")
+            if path_ref is None:
+                continue
+            resolved = (project_root / path_ref).resolve()
+            if not resolved.is_file():
+                warnings.append(f"{ident}: attachment not found on disk: {path_ref}")
+
     return Manifest(
         path=manifest_path,
         schema_version=int(raw.get("schema_version", 1)),
         scope=dict(raw.get("scope") or {}),
         project=dict(raw.get("project") or {}),
         controls=controls,
-        warnings=[],
+        warnings=warnings,
     )
 
 

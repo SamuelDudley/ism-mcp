@@ -96,3 +96,20 @@ def test_find_manifest_returns_none_if_none(tmp_path):
     nested = tmp_path / "nowhere" / "to" / "find"
     nested.mkdir(parents=True)
     assert find_manifest(nested) is None
+
+
+def test_read_manifest_warns_about_missing_attachments(tmp_path):
+    path = tmp_path / ".ism-coverage.toml"
+    path.write_text(SAMPLE_TOML)
+    # Attachment is referenced in SAMPLE_TOML but the file doesn't exist on disk.
+    m = read_manifest(path)
+    assert any("lock-prompt.png" in w for w in m.warnings), m.warnings
+
+
+def test_read_manifest_no_warnings_when_attachments_exist(tmp_path):
+    (tmp_path / ".ism-coverage" / "evidence" / "ISM-0428").mkdir(parents=True)
+    (tmp_path / ".ism-coverage" / "evidence" / "ISM-0428" / "lock-prompt.png").write_bytes(b"x")
+    path = tmp_path / ".ism-coverage.toml"
+    path.write_text(SAMPLE_TOML)
+    m = read_manifest(path)
+    assert m.warnings == []
