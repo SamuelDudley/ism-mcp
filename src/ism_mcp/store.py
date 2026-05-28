@@ -222,6 +222,11 @@ def list_topics(conn: sqlite3.Connection) -> list[str]:
     return [r["topic"] for r in rows]
 
 
+def list_sections(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute("SELECT DISTINCT section FROM controls ORDER BY section").fetchall()
+    return [r["section"] for r in rows]
+
+
 def count_controls(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) AS n FROM controls").fetchone()["n"]
 

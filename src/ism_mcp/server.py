@@ -99,5 +99,37 @@ def ism_stats() -> str:
     )
 
 
+@mcp.tool()
+def ism_list_sections() -> str:
+    """List the distinct ISM Section values, the vocabulary for the `tags` filter on `ism_applicable`."""
+    conn = _conn()
+    sections = store.list_sections(conn)
+    return json.dumps({"count": len(sections), "sections": sections}, indent=2)
+
+
+@mcp.tool()
+def ism_list_classifications() -> str:
+    """Return the classification enum (canonical abbreviations and friendly aliases)."""
+    return json.dumps(
+        {
+            "canonical": ["NC", "OS", "P", "S", "TS"],
+            "friendly": [
+                "OFFICIAL",
+                "OFFICIAL:Sensitive",
+                "PROTECTED",
+                "SECRET",
+                "TOP_SECRET",
+            ],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+def ism_list_maturities() -> str:
+    """Return the Essential Eight maturity levels."""
+    return json.dumps({"maturities": ["ML1", "ML2", "ML3"]}, indent=2)
+
+
 def run() -> None:
     mcp.run()
