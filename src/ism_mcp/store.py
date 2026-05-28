@@ -7,6 +7,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
@@ -47,6 +49,11 @@ CREATE TRIGGER IF NOT EXISTS controls_ai AFTER INSERT ON controls BEGIN
     INSERT INTO controls_fts(rowid, identifier, description, topic, section, guideline)
     VALUES (new.rowid, new.identifier, new.description, new.topic, new.section, new.guideline);
 END;
+
+CREATE TABLE IF NOT EXISTS controls_embeddings (
+    rowid     INTEGER PRIMARY KEY REFERENCES controls(rowid) ON DELETE CASCADE,
+    embedding BLOB NOT NULL
+);
 """
 
 
@@ -94,7 +101,12 @@ def open_db(path: Path) -> sqlite3.Connection:
 
 def reset(conn: sqlite3.Connection) -> None:
     conn.executescript(
-        "DROP TABLE IF EXISTS controls_fts; DROP TABLE IF EXISTS controls; DROP TABLE IF EXISTS meta;"
+        """
+        DROP TABLE IF EXISTS controls_embeddings;
+        DROP TABLE IF EXISTS controls_fts;
+        DROP TABLE IF EXISTS controls;
+        DROP TABLE IF EXISTS meta;
+        """
     )
     conn.executescript(SCHEMA)
 
@@ -212,3 +224,24 @@ def list_topics(conn: sqlite3.Connection) -> list[str]:
 
 def count_controls(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) AS n FROM controls").fetchone()["n"]
+
+
+def insert_embeddings(conn: sqlite3.Connection, rows: list[tuple[int, bytes]]) -> int:
+    conn.executemany(
+        "INSERT OR REPLACE INTO controls_embeddings(rowid, embedding) VALUES (?, ?)",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def load_embedding_matrix(conn: sqlite3.Connection, dim: int) -> tuple[np.ndarray, list[int]]:
+    rows = conn.execute(
+        "SELECT rowid, embedding FROM controls_embeddings ORDER BY rowid"
+    ).fetchall()
+    if not rows:
+        return np.empty((0, dim), dtype=np.float32), []
+    ids = [r["rowid"] for r in rows]
+    matrix = np.frombuffer(b"".join(r["embedding"] for r in rows), dtype=np.float32)
+    matrix = matrix.reshape(len(rows), dim)
+    return matrix.copy(), ids

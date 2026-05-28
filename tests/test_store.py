@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from ism_mcp import store
@@ -64,3 +65,44 @@ def test_meta_set_and_get(db):
     store.set_meta(db, "ism_revision", "2026-06")
     assert store.get_meta(db, "ism_revision") == "2026-06"
     assert store.get_meta(db, "missing_key") is None
+
+
+def test_insert_and_fetch_embeddings(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    rows = list(db.execute("SELECT rowid, identifier FROM controls ORDER BY rowid"))
+    rowid_for = {row["identifier"]: row["rowid"] for row in rows}
+    vectors = np.array(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    store.insert_embeddings(
+        db,
+        [
+            (rowid_for["ISM-9001"], vectors[0].tobytes()),
+            (rowid_for["ISM-9002"], vectors[1].tobytes()),
+            (rowid_for["ISM-9003"], vectors[2].tobytes()),
+        ],
+    )
+    matrix, ids = store.load_embedding_matrix(db, dim=4)
+    assert matrix.shape == (3, 4)
+    assert matrix.dtype == np.float32
+    assert set(ids) == set(rowid_for.values())
+
+
+def test_load_embedding_matrix_returns_empty_when_table_empty(db):
+    matrix, ids = store.load_embedding_matrix(db, dim=4)
+    assert matrix.shape == (0, 4)
+    assert ids == []
+
+
+def test_reset_drops_embeddings(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    row = db.execute("SELECT rowid FROM controls LIMIT 1").fetchone()
+    store.insert_embeddings(db, [(row["rowid"], (b"\x00" * 16))])
+    store.reset(db)
+    _matrix, ids = store.load_embedding_matrix(db, dim=4)
+    assert ids == []
