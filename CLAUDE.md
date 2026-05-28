@@ -77,7 +77,28 @@ perf:     performance
 - TDD by default. Write the failing test first, prove it fails, then implement.
 - Plans under `docs/plans/` are executable: each task is self-contained with full code and verification steps.
 - Prefer inline execution over fan-out to subagents. Subagents (when used) on Opus.
-- Keep `HANDOVER.md` current at the end of any substantive session.
+
+### Closing a development branch
+
+When a plan is complete and its branch is about to land on `main`, run this checklist in order. **`HANDOVER.md` MUST be current before a new session can start work** — a stale handover sends the next agent down the wrong path or makes them redo decisions.
+
+1. Run `./scripts/ci.sh` on the feature branch. Confirm `==> CI OK`.
+2. Rebase the feature branch onto current `main` (planning artifacts that landed on `main` mid-flight come along).
+3. Fast-forward merge into `main` (`git merge --ff-only <branch>`).
+4. Run `./scripts/ci.sh` on `main`. Confirm `==> CI OK`.
+5. Push `main` to `origin`.
+6. Delete the merged feature branch (`git branch -d <branch>`).
+7. **Update `HANDOVER.md`** so it reflects:
+   - Plans completed in this round (mark DONE in the roadmap table).
+   - The next plan's exact file path under "Next action", with one-line description of scope.
+   - Decisions locked in for the next plan (so the next agent does not re-litigate them).
+   - Current branch state (`main` is up to date, feature branch deleted).
+   - Any deferred items or known gaps that affect the next plan.
+   - Quick-orientation steps point at the next plan, not the one just finished.
+8. Commit and push the HANDOVER update.
+9. Working tree clean. Done.
+
+If you cannot complete step 7 (the writing agent does not have enough context, or the next plan has not been written yet), say so explicitly. Do not leave a stale handover claiming the project is in a state it is not.
 
 ## When to update this file
 
