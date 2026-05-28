@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 import tomllib
@@ -246,10 +247,8 @@ def _atomic_write(target: Path, text: str) -> None:
             f.write(text)
         os.replace(tmp, target)
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 

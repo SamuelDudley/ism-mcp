@@ -130,9 +130,7 @@ def test_list_in_scope_filters_by_sections(db, sample_controls):
 
 def test_list_in_scope_combines_all_filters(db, sample_controls):
     store.insert_controls(db, sample_controls)
-    rows = store.list_in_scope(
-        db, classification="TS", maturity="ML3", sections=["Audit"]
-    )
+    rows = store.list_in_scope(db, classification="TS", maturity="ML3", sections=["Audit"])
     assert {c.identifier for c in rows} == {"ISM-9003"}
 
 

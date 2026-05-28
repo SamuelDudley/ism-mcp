@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import date
 from pathlib import Path
 
 import pytest
+
 from ism_mcp.coverage import Manifest, ManifestEntry
 
 
@@ -33,7 +35,7 @@ def test_manifest_entry_is_frozen():
         how_met="x",
         last_reviewed=date(2026, 5, 28),
     )
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises(FrozenInstanceError):
         entry.status = "partial"  # type: ignore[misc]
 
 

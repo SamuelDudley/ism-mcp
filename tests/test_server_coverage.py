@@ -12,8 +12,7 @@ SEED_TOML = """\
 schema_version = 1
 
 [scope]
-classification = "P"
-maturity = "ML2"
+classification = "S"
 sections = ["Encryption", "Audit"]
 
 [project]
@@ -50,8 +49,8 @@ def project_with_ism_db(tmp_path, sample_controls, monkeypatch):
 
 def test_coverage_read_returns_parsed_manifest(project_with_manifest, project_with_ism_db):
     result = json.loads(server.ism_coverage_read())
-    assert result["scope"]["classification"] == "P"
-    assert result["scope"]["maturity"] == "ML2"
+    assert result["scope"]["classification"] == "S"
+    assert result["scope"]["sections"] == ["Encryption", "Audit"]
     assert result["project"]["name"] == "demo"
     assert "ISM-9001" in result["controls"]
     assert result["controls"]["ISM-9001"]["status"] == "covered"
@@ -178,3 +177,41 @@ def test_coverage_upsert_warns_out_of_scope(project_with_manifest, project_with_
     )
     assert result["ok"] is True
     assert any("scope" in w.lower() for w in result["warnings"])
+
+
+def test_coverage_gaps_without_work_lists_outstanding_in_scope(
+    project_with_manifest, project_with_ism_db
+):
+    # Seed manifest covers ISM-9001 (Encryption). ISM-9003 is in scope sections (Audit)
+    # but uncurated. ISM-9002 is Authentication (out of scope sections).
+    result = json.loads(server.ism_coverage_gaps())
+    ids = [g["identifier"] for g in result["gaps"]]
+    assert "ISM-9003" in ids
+    assert "ISM-9001" not in ids  # covered
+    assert "ISM-9002" not in ids  # out of scope
+
+
+def test_coverage_gaps_with_work_intersects_with_applicable(
+    project_with_manifest, project_with_ism_db
+):
+    result = json.loads(server.ism_coverage_gaps(work="event logging"))
+    # ISM-9003 (Event logging) should surface for this work via lexical match on the topic.
+    ids = [g["identifier"] for g in result["gaps"]]
+    assert "ISM-9003" in ids
+    # And each gap should carry score + why because work was supplied.
+    g = next(g for g in result["gaps"] if g["identifier"] == "ISM-9003")
+    assert "score" in g
+    assert "why" in g
+
+
+def test_coverage_gaps_returns_error_when_manifest_missing(
+    tmp_path, monkeypatch, project_with_ism_db
+):
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(server.ism_coverage_gaps())
+    assert "error" in result
+
+
+def test_coverage_gaps_limit_truncates(project_with_manifest, project_with_ism_db):
+    result = json.loads(server.ism_coverage_gaps(limit=1))
+    assert len(result["gaps"]) <= 1

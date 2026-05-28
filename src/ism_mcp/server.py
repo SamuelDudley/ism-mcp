@@ -464,7 +464,7 @@ def ism_coverage_upsert(
 
     entry = coverage.ManifestEntry(
         identifier=identifier,
-        status=status,
+        status=status,  # type: ignore[arg-type]
         how_met=how_met,
         last_reviewed=last_reviewed_date,
         reviewed_by=reviewed_by,
@@ -487,6 +487,65 @@ def ism_coverage_upsert(
         result["warnings"].append(f"{identifier}: identifier is outside declared scope")
 
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def ism_coverage_gaps(
+    work: str | None = None,
+    project_path: str | None = None,
+    limit: int = 50,
+) -> str:
+    """Return outstanding in-scope controls (uncurated, partial, deferred).
+
+    If `work` is supplied, runs `ism_applicable` with the project's scope as filters
+    and intersects with the manifest to return work-relevant gaps ranked by score.
+    Without `work`, returns the full outstanding set ordered uncurated > partial > deferred.
+    """
+    path, err = _find_manifest_or_error(project_path)
+    if err is not None:
+        return json.dumps(err)
+    assert path is not None
+
+    try:
+        manifest = coverage.read_manifest(path)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    conn = _conn()
+    try:
+        in_scope = store.list_in_scope(
+            conn,
+            classification=manifest.scope.get("classification"),
+            maturity=manifest.scope.get("maturity"),
+            sections=manifest.scope.get("sections"),
+        )
+    except ValueError as e:
+        return json.dumps({"error": f"scope: {e}"})
+
+    applicable: list[dict] | None = None
+    if work is not None:
+        raw = json.loads(
+            ism_applicable(
+                work,
+                classification=manifest.scope.get("classification"),
+                maturity=manifest.scope.get("maturity"),
+                tags=manifest.scope.get("sections"),
+                limit=200,
+            )
+        )
+        if "error" in raw:
+            return json.dumps({"error": f"ism_applicable: {raw['error']}"})
+        applicable = raw.get("results") or []
+
+    result = coverage.compute_gaps(manifest, in_scope, applicable=applicable, limit=limit)
+    return json.dumps(
+        {
+            "scope": manifest.scope,
+            "work": work,
+            **result,
+        },
+        indent=2,
+    )
 
 
 def run() -> None:

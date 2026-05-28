@@ -74,7 +74,7 @@ def test_upsert_rejects_invalid_status(tmp_path):
     path = _seed(tmp_path)
     entry = ManifestEntry(
         identifier="ISM-0428",
-        status="bogus",
+        status="bogus",  # type: ignore[arg-type]
         how_met="x",
         last_reviewed=date(2026, 5, 28),
     )

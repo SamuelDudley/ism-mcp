@@ -10,7 +10,7 @@ from ism_mcp.coverage import ManifestEntry, validate_entry
 
 
 def _entry(**overrides) -> ManifestEntry:
-    base = dict(
+    base: dict = dict(
         identifier="ISM-0428",
         status="covered",
         how_met="x",
@@ -39,7 +39,7 @@ def test_empty_how_met_raises(tmp_path):
 
 def test_url_without_description_raises(tmp_path):
     entry = _entry(urls=[{"url": "https://example.com"}])
-    with pytest.raises(ValueError, match="url.*description"):
+    with pytest.raises(ValueError, match=r"url.*description"):
         validate_entry(entry, project_root=tmp_path)
 
 
@@ -53,7 +53,7 @@ def test_attachment_without_description_raises(tmp_path):
     attachment_file = tmp_path / "evidence.png"
     attachment_file.write_bytes(b"x")
     entry = _entry(attachments=[{"path": "evidence.png"}])
-    with pytest.raises(ValueError, match="attachment.*description"):
+    with pytest.raises(ValueError, match=r"attachment.*description"):
         validate_entry(entry, project_root=tmp_path)
 
 
@@ -61,7 +61,7 @@ def test_attachment_path_must_exist(tmp_path):
     entry = _entry(
         attachments=[{"path": "missing.png", "description": "x"}],
     )
-    with pytest.raises(FileNotFoundError, match="missing.png"):
+    with pytest.raises(FileNotFoundError, match=r"missing\.png"):
         validate_entry(entry, project_root=tmp_path)
 
 
