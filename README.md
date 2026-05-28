@@ -93,6 +93,9 @@ The CI script is the source of truth for what counts as a passing build. Run it 
 | `ism_list_classifications()` | Canonical classification enum plus friendly aliases. |
 | `ism_list_maturities()` | Essential Eight maturity levels. |
 | `ism_stats()` | Database statistics. |
+| `ism_coverage_read(project_path?, status_filter?)` | Read the project's `.ism-coverage.toml` manifest, including scope, summary counts, and curated entries. |
+| `ism_coverage_upsert(identifier, status, how_met, ...)` | Create or update one entry with evidence (files, commits, urls, attachments). Validates against the ISM DB and the project filesystem. |
+| `ism_coverage_gaps(work?, limit?)` | Return outstanding in-scope controls. With `work`, ranks by `ism_applicable` relevance and intersects with the manifest. |
 
 Each `Control` record carries: `identifier`, `guideline`, `section`, `topic`, `revision`, `updated`, `description`, classification applicability (`NC/OS/P/S/TS`), maturity applicability (`ML1/ML2/ML3`), `pdf_excerpt`, `pdf_page`.
 
@@ -139,6 +142,52 @@ Without embeddings, `ism_applicable` falls back to lexical-only ranking. Results
 |---|---|---|
 | `ISM_MCP_DB` | path | Override the database location. Default `~/.local/share/ism-mcp/ism.db`. |
 | `ISM_MCP_EMBEDDER` | `fastembed` (default), `hash`, `none` | Force a specific embedder at server start. `hash` is test-only. `none` disables semantic retrieval. |
+
+## Project coverage manifest
+
+For projects pursuing IRAP review (or any internal review against the ISM), `.ism-coverage.toml` at the project root records how each in-scope control is addressed.
+
+```toml
+schema_version = 1
+
+[scope]
+classification = "P"
+maturity = "ML2"
+sections = ["Authentication hardening", "Cryptographic fundamentals"]
+
+[project]
+name = "demo-admin"
+
+[controls."ISM-0428"]
+status = "covered"
+how_met = """
+Sessions terminate after 14 min of idle activity, enforced
+in the auth middleware. Re-auth requires all original factors.
+"""
+last_reviewed = 2026-05-28
+files = ["src/auth/session.py:42-87"]
+commits = ["abc1234"]
+
+[[controls."ISM-0428".attachments]]
+path = ".ism-coverage/evidence/ISM-0428/lock-prompt.png"
+description = "Admin console at 14:01 showing session-expired modal"
+```
+
+Recommended layout for binary evidence:
+
+```
+your-repo/
+  .ism-coverage.toml
+  .ism-coverage/
+    evidence/
+      ISM-0428/
+        lock-prompt.png
+        tls-handshake.pcapng
+```
+
+A template lives at `src/ism_mcp/data/coverage_template.toml` if you want to copy and start from a known-good shape.
+
+Reference design: `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md`.
 
 ## Architecture
 
