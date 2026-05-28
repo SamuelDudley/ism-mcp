@@ -7,6 +7,7 @@
 #   ./scripts/ci.sh lint         run only ruff lint
 #   ./scripts/ci.sh type         run only pyright
 #   ./scripts/ci.sh test         run only pytest
+#   ./scripts/ci.sh slow         run only the slow pytest suite (downloads fastembed model)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -31,11 +32,17 @@ run_test() {
     uv run pytest
 }
 
+run_slow() {
+    echo "==> pytest -m slow"
+    uv run pytest -m slow
+}
+
 case "${1:-all}" in
     fmt)  run_fmt ;;
     lint) run_lint ;;
     type) run_type ;;
     test) run_test ;;
+    slow) run_slow ;;
     all)
         run_fmt
         run_lint
@@ -44,7 +51,7 @@ case "${1:-all}" in
         ;;
     *)
         echo "Unknown target: $1" >&2
-        echo "Usage: $0 [fmt|lint|type|test|all]" >&2
+        echo "Usage: $0 [fmt|lint|type|test|slow|all]" >&2
         exit 2
         ;;
 esac

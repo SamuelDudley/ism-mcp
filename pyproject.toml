@@ -31,7 +31,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--strict-markers", "--strict-config", "-ra"]
+addopts = ["--strict-markers", "--strict-config", "-ra", "-m", "not slow"]
+markers = ["slow: integration tests that download the real fastembed model"]
 
 [tool.ruff]
 line-length = 100
