@@ -9,8 +9,8 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from . import classification as cls
+from . import coverage, retrieve, store
 from . import paths as repo_paths
-from . import retrieve, store
 from .embed import DeterministicHashEmbedder, Embedder, FastEmbedEmbedder
 
 DEFAULT_DB = Path(os.environ.get("ISM_MCP_DB", Path.home() / ".local/share/ism-mcp/ism.db"))
@@ -312,6 +312,87 @@ def _render_result(m: dict, verbose: bool) -> dict:
         base["pdf_excerpt"] = r["pdf_excerpt"]
         base["pdf_page"] = r["pdf_page"]
     return base
+
+
+def _find_manifest_or_error(project_path: str | None) -> tuple[Path | None, dict | None]:
+    start = Path(project_path) if project_path else Path.cwd()
+    found = coverage.find_manifest(start)
+    if found is None:
+        return None, {
+            "error": "no manifest found",
+            "hint": (
+                "create .ism-coverage.toml at the project root with at minimum a [scope] section"
+            ),
+        }
+    return found, None
+
+
+def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) -> dict:
+    controls = {}
+    summary = {
+        "total_curated": len(manifest.controls),
+        "covered": 0,
+        "partial": 0,
+        "not_applicable": 0,
+        "deferred": 0,
+    }
+    for ident, entry in manifest.controls.items():
+        key = entry.status.replace("-", "_")
+        summary[key] = summary.get(key, 0) + 1
+        if status_filter is not None and entry.status != status_filter:
+            continue
+        controls[ident] = {
+            "status": entry.status,
+            "how_met": entry.how_met,
+            "last_reviewed": entry.last_reviewed.isoformat(),
+            "reviewed_by": entry.reviewed_by,
+            "next_review": entry.next_review.isoformat() if entry.next_review else None,
+            "files": entry.files,
+            "commits": entry.commits,
+            "urls": entry.urls,
+            "attachments": entry.attachments,
+        }
+    return {
+        "manifest_path": str(manifest.path),
+        "scope": manifest.scope,
+        "project": manifest.project,
+        "summary": summary,
+        "controls": controls,
+        "warnings": manifest.warnings,
+    }
+
+
+@mcp.tool()
+def ism_coverage_read(project_path: str | None = None, status_filter: str | None = None) -> str:
+    """Read the project's coverage manifest. Returns scope, summary counts, and curated entries.
+
+    Walks up from cwd if `project_path` is omitted. `status_filter` narrows the controls map
+    to a single status (`covered|partial|not-applicable|deferred`); summary is unfiltered.
+    """
+    path, err = _find_manifest_or_error(project_path)
+    if err is not None:
+        return json.dumps(err)
+    assert path is not None
+    try:
+        manifest = coverage.read_manifest(path)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    conn = _conn()
+    extra_warnings: list[str] = list(manifest.warnings)
+    for ident in manifest.controls:
+        if store.get_control(conn, ident) is None:
+            extra_warnings.append(f"{ident}: not present in the current ISM revision")
+    manifest = coverage.Manifest(
+        path=manifest.path,
+        schema_version=manifest.schema_version,
+        scope=manifest.scope,
+        project=manifest.project,
+        controls=manifest.controls,
+        warnings=extra_warnings,
+    )
+
+    return json.dumps(_manifest_to_json(manifest, status_filter), indent=2)
 
 
 def run() -> None:
