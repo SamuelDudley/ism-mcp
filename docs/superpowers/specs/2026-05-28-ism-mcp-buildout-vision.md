@@ -28,11 +28,13 @@ Decomposed in dependency order. Each sub-project is independently shippable and 
 
 ### A. Hardening foundation
 
-**Status:** designed (`docs/plans/2026-05-28-hardening-and-tests.md`), not yet executed.
+**Status:** shipped.
 
 Pytest with hermetic fixtures, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts. Prerequisite to everything below because (i) the new modules need a test bed and (ii) per-control excerpts feed the embedding text in sub-project B.
 
 ### B. Hybrid discovery
+
+**Status:** shipped (`docs/plans/2026-05-28-hybrid-discovery.md`).
 
 The headline capability. Adds `ism_applicable(work, classification?, maturity?, tags?, paths?, limit?, verbose?)`, ranked by hybrid retrieval (vector + BM25 reciprocal-rank fusion) with structured post-filters.
 
@@ -51,6 +53,8 @@ Cross-references and pre-baked filters that exploit known structure in the ISM:
 **Why second:** depends on B's embeddings for "semantically similar" in `ism_neighbors`. The other helpers are independent but compose naturally with B in the agent's workflow.
 
 ### D. Project coverage manifest
+
+**Status:** designed (`2026-05-28-coverage-manifest-design.md`), not yet executed.
 
 Persistent project-side state so an agent can reason about "what's already addressed":
 
