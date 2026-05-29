@@ -100,6 +100,30 @@ When a plan is complete and its branch is about to land on `main`, run this chec
 
 If you cannot complete step 7 (the writing agent does not have enough context, or the next plan has not been written yet), say so explicitly. Do not leave a stale handover claiming the project is in a state it is not.
 
+## Releasing
+
+Deployments launch the server with `uvx --from git+<origin>@<tag> ism-mcp serve`, so a release is a tagged revision pushed to `origin`. `origin` is a bare repo at `file:///home/dudley/code/ism-mcp.git`. It serves deployments on this machine. A team-reachable host (GitHub or private) is still pending before off-machine consumers can fetch.
+
+To cut a release:
+
+1. Land the work on `main` and run `./scripts/ci.sh`. Confirm `==> CI OK`.
+2. Tag an annotated version and push `main` with the tag.
+
+   ```bash
+   git tag -a v2 -m "ism-mcp v2 <one-line scope>"
+   git push origin main v2
+   ```
+
+3. Point deployments at the tag. With the install helper, pass the tag as the revision.
+
+   ```bash
+   uv run ism-mcp install --project PATH --rev v2
+   ```
+
+   For a hand-managed registration, set `@v2` in the `uvx --from git+<origin>@v2` args, then reconnect the MCP client.
+
+Cut a new tag per release. Do not move an existing tag. `uvx` caches a build per ref, so a moved tag keeps serving stale code until the cache is cleared with `uvx --reinstall`.
+
 ## When to update this file
 
 Update CLAUDE.md when:
