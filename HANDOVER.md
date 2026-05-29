@@ -19,7 +19,7 @@ The coverage manifest lives at `.ism-coverage.toml` in each consumer repo with a
 
 Embeddings are generated at ingest by `bge-small-en-v1.5` via `fastembed`. The default DB at `~/.local/share/ism-mcp/ism.db` includes the `controls_embeddings` sidecar table.
 
-The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 132 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
+The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 135 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
 
 The MCP server is registered at user scope in Claude Code (`claude mcp list` shows `ism: ✓ Connected`) and is reachable from any project. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
 
@@ -31,7 +31,13 @@ src/ism_mcp/
   __main__.py        CLI entrypoint (ingest, serve)
   store.py           SQLite schema + queries + FTS5
   ingest.py          XLSX parser + PDF per-control excerpt extractor
-  server.py          FastMCP server with six tools
+  retrieve.py        cosine search + Reciprocal Rank Fusion
+  embed.py           embedder protocol + fastembed and hash backends
+  classification.py  classification + maturity input normalisation
+  paths.py           repo-path token expansion for query enrichment
+  coverage.py        coverage manifest read, validate, serialise, gaps
+  server.py          FastMCP server: lookup, discovery, coverage tools
+  data/              path keyword map + coverage template
 tests/               pytest suite with hermetic fixtures
 scripts/ci.sh        local CI entrypoint
 docs/plans/          implementation plans

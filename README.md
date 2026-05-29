@@ -53,7 +53,7 @@ Add to your Claude Code MCP configuration:
 }
 ```
 
-Restart Claude Code. The tools `ism_get`, `ism_search`, `ism_list_by_classification`, `ism_list_by_topic`, `ism_list_topics`, and `ism_stats` become available.
+Restart Claude Code. The tools listed under [MCP tools](#mcp-tools) become available, led by `ism_applicable` for ranked discovery.
 
 ## Use programmatically
 
@@ -194,10 +194,15 @@ Reference design: `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md
 ```
 ism-mcp/
   src/ism_mcp/
-    store.py     SQLite schema + queries, FTS5 over description/topic/section/guideline
-    ingest.py    XLSX parser (openpyxl) + PDF paragraph extractor (pdfplumber)
-    server.py    FastMCP server, six tools, JSON responses
-    __main__.py  CLI: `ingest` and `serve` subcommands
+    store.py          SQLite schema + queries, FTS5 over description/topic/section/guideline
+    ingest.py         XLSX parser (openpyxl) + PDF paragraph extractor (pdfplumber)
+    retrieve.py       cosine search + Reciprocal Rank Fusion
+    embed.py          embedder protocol + fastembed and hash backends
+    classification.py classification + maturity input normalisation
+    paths.py          repo-path token expansion for query enrichment
+    coverage.py       coverage manifest read, validate, serialise, gaps
+    server.py         FastMCP server: lookup, discovery, coverage tools, JSON responses
+    __main__.py       CLI: `ingest` and `serve` subcommands
   pyproject.toml uv-managed, hatchling build
 ```
 
