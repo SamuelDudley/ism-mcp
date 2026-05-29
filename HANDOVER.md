@@ -139,6 +139,6 @@ See `CLAUDE.md` for the canonical list. Highlights:
 3. Run the verification block in the "Verifying current state" section above.
 4. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm sub-project C.
 
-Branch state: `feature/consumer-install-helper` holds sub-project E and is ready to land on `main`. `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No remote configured (see known limitations).
+Branch state: `main` is the active branch and up to date. `feature/consumer-install-helper`, `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No active feature branch. No remote configured (see known limitations).
 
 Recent post-audit fix: `store.search` now sanitises free-text into quoted FTS5 phrases, so `ism_search` and `ism_applicable` no longer raise on metacharacters (colons, Windows paths, bare boolean operators). See `store.sanitise_fts_query`.
