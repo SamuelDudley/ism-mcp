@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+from typing import TypedDict
 
 import pytest
 
+from ism_mcp import __main__ as cli
 from ism_mcp import install
 
-UVX = dict(mode="uvx", repo="https://example/ism-mcp", rev="abc1234")
+
+class _Uvx(TypedDict):
+    mode: str
+    repo: str
+    rev: str
+
+
+UVX: _Uvx = {"mode": "uvx", "repo": "https://example/ism-mcp", "rev": "abc1234"}
 
 
 def _repo_with_db(tmp_path):
@@ -64,11 +74,6 @@ def test_install_is_idempotent(tmp_path):
     install.install(project=project, db_src=db_src, **UVX)
     for p, data in snapshot.items():
         assert p.read_bytes() == data
-
-
-import argparse
-
-from ism_mcp import __main__ as cli
 
 
 def _args(**kw):
