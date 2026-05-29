@@ -90,7 +90,7 @@ perf:     performance
 
 ### Closing a development branch
 
-When a plan is complete and its branch is about to land on `main`, run this checklist in order. **`HANDOVER.md` MUST be current before a new session can start work** — a stale handover sends the next agent down the wrong path or makes them redo decisions.
+When a plan is complete and its branch is about to land on `main`, run this checklist in order. **`HANDOVER.md` MUST be current before a new session can start work.** A stale handover sends the next agent down the wrong path or makes them redo decisions.
 
 1. Run `./scripts/ci.sh` on the feature branch. Confirm `==> CI OK`.
 2. Rebase the feature branch onto current `main` (planning artifacts that landed on `main` mid-flight come along).
