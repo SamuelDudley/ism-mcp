@@ -87,3 +87,23 @@ def merge_mcp_json(path: Path, name: str, entry: dict, *, dry_run: bool = False)
         servers[name] = entry
         path.write_text(json.dumps(data, indent=2) + "\n")
     return action
+
+
+def write_managed_block(path: Path, block: str, *, dry_run: bool = False) -> str:
+    """Append or replace the marked block in CLAUDE.md, leaving other text intact."""
+    if not path.is_file():
+        if not dry_run:
+            path.write_text(block)
+        return f"create {path.name} with ism-mcp block"
+    text = path.read_text()
+    if MARKER_BEGIN in text and MARKER_END in text:
+        start = text.index(MARKER_BEGIN)
+        end = text.index(MARKER_END, start) + len(MARKER_END)
+        new = text[:start] + block.strip("\n") + text[end:]
+        action = f"replace ism-mcp block in {path.name}"
+    else:
+        new = text.rstrip("\n") + "\n\n" + block
+        action = f"append ism-mcp block to {path.name}"
+    if not dry_run:
+        path.write_text(new)
+    return action
