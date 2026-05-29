@@ -119,7 +119,7 @@ Deferred (revisit when consumers ask): revision diff, HTTP/SSE transport, PyPI p
 - **No incremental updates.** Each ingest drops and rebuilds the database.
 - **Single-revision database.** No history across ISM revisions. Defer to plan #3.
 - **No auth on the MCP server.** Local stdio only.
-- **uvx and docker install modes need a published remote.** `ism-mcp install` emits configs that fetch ism-mcp from a pinned git revision. The repository has no remote yet, so publishing it and setting `origin` is a prerequisite before the emitted configs work for anyone, including the author's own user-scope registration. Until then, `install --dry-run` works and the command errors with a clear hint when no remote is detected.
+- **uvx and docker install modes fetch from a git remote.** `origin` now points at a local bare repo at `file:///home/dudley/code/ism-mcp.git`, which `ism-mcp install` auto-detects. This works for deployments on this machine. It is not reachable by teammates on other machines, so a team-reachable host (GitHub or private) is still pending before the emitted configs work off-machine.
 
 ## Conventions
 
@@ -139,6 +139,6 @@ See `CLAUDE.md` for the canonical list. Highlights:
 3. Run the verification block in the "Verifying current state" section above.
 4. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm sub-project C.
 
-Branch state: `main` is the active branch and up to date. `feature/consumer-install-helper`, `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No active feature branch. No remote configured (see known limitations).
+Branch state: `main` is the active branch and up to date. `feature/consumer-install-helper`, `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No active feature branch. `origin` points at a local bare repo at `file:///home/dudley/code/ism-mcp.git` (see known limitations).
 
 Recent post-audit fix: `store.search` now sanitises free-text into quoted FTS5 phrases, so `ism_search` and `ism_applicable` no longer raise on metacharacters (colons, Windows paths, bare boolean operators). See `store.sanitise_fts_query`.
