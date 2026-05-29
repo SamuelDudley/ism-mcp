@@ -133,3 +133,28 @@ def copy_database(src: Path, dst: Path, *, dry_run: bool = False) -> str:
 
 def _manifest_template() -> str:
     return files("ism_mcp.data").joinpath("coverage_template.toml").read_text()
+
+
+def install(
+    *,
+    project: Path,
+    db_src: Path,
+    mode: str = "uvx",
+    repo: str | None = None,
+    rev: str | None = None,
+    image: str | None = None,
+    name: str = "ism",
+    dry_run: bool = False,
+) -> list[str]:
+    """Write the .mcp.json entry, CLAUDE.md block, manifest, and database. Return actions."""
+    entry = mcp_entry(mode, repo=repo, rev=rev, image=image)
+    if not db_src.is_file():
+        raise FileNotFoundError(
+            f"source database not found at {db_src}. Run 'ism-mcp ingest' first."
+        )
+    return [
+        merge_mcp_json(project / ".mcp.json", name, entry, dry_run=dry_run),
+        write_managed_block(project / "CLAUDE.md", claude_md_block(), dry_run=dry_run),
+        scaffold_manifest(project / ".ism-coverage.toml", _manifest_template(), dry_run=dry_run),
+        copy_database(db_src, project / DB_REPO_PATH, dry_run=dry_run),
+    ]
