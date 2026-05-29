@@ -36,3 +36,18 @@ def test_docker_entry_requires_image():
 def test_unknown_mode_raises():
     with pytest.raises(ValueError):
         install.mcp_entry("local")
+
+
+def test_claude_md_block_is_delimited_by_markers():
+    block = install.claude_md_block()
+    assert block.startswith(install.MARKER_BEGIN)
+    assert block.rstrip().endswith(install.MARKER_END)
+    assert block.count(install.MARKER_BEGIN) == 1
+    assert block.count(install.MARKER_END) == 1
+
+
+def test_claude_md_block_names_the_key_tools():
+    block = install.claude_md_block()
+    assert "ism_applicable" in block
+    assert "ism_coverage_gaps" in block
+    assert ".ism-coverage.toml" in block

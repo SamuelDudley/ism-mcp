@@ -4,6 +4,8 @@ from __future__ import annotations
 
 DB_ENV_VALUE = "${CLAUDE_PROJECT_DIR:-.}/.ism/ism.db"
 DB_REPO_PATH = ".ism/ism.db"
+MARKER_BEGIN = "<!-- ism-mcp:begin -->"
+MARKER_END = "<!-- ism-mcp:end -->"
 
 
 def mcp_entry(
@@ -41,3 +43,26 @@ def mcp_entry(
             ],
         }
     raise ValueError(f"unknown mode: {mode}")
+
+
+def claude_md_block() -> str:
+    """Return the managed CLAUDE.md guidance block, markers included."""
+    return f"""{MARKER_BEGIN}
+## ISM controls (ism-mcp)
+
+This repo has the ASD Information Security Manual available through the `ism` MCP server.
+
+Consult it when the work touches Australian Government security, ASD or ACSC guidance,
+the Essential Eight, or classifications (OFFICIAL, OFFICIAL:Sensitive, PROTECTED, SECRET,
+TOP_SECRET), and during security review, threat modelling, or compliance writing.
+
+- `ism_applicable(work, ...)` finds controls relevant to what you are doing.
+- `ism_get(identifier)` returns the full text of one control.
+
+Track coverage in `.ism-coverage.toml`:
+
+- `ism_coverage_read()` shows what is recorded.
+- `ism_coverage_gaps(work)` lists in-scope controls not yet addressed.
+- `ism_coverage_upsert(...)` records how a control is met, with evidence.
+{MARKER_END}
+"""
