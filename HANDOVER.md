@@ -1,6 +1,6 @@
 # Next-Session Handover
 
-> Last updated: 2026-05-28 (post coverage-manifest). Read this first when picking up the project.
+> Last updated: 2026-05-29 (post install-helper). Read this first when picking up the project.
 
 ## What this is
 
@@ -8,12 +8,14 @@
 
 ## Where we are
 
-Sub-projects A (hardening), B (hybrid discovery), and D (coverage manifest) are merged. The MCP server now exposes:
+Sub-projects A (hardening), B (hybrid discovery), D (coverage manifest), and E (consumer install helper) are merged. The MCP server now exposes:
 
 - `ism_applicable(work, ...)` for ranked discovery.
 - `ism_coverage_read | upsert | gaps` for per-project IRAP-grade coverage tracking.
 - `ism_list_sections | classifications | maturities` as enum helpers.
 - The original six tools unchanged.
+
+The CLI now has `ism-mcp install --project PATH`. It writes a project-scoped `.mcp.json`, a managed CLAUDE.md guidance block, a scaffolded `.ism-coverage.toml`, and a committed `.ism/ism.db` into a consumer repo. Modes are `uvx` (default) and `docker`. The emitted config points `ISM_MCP_DB` at `${CLAUDE_PROJECT_DIR:-.}/.ism/ism.db` so it resolves on every clone. See `docs/superpowers/specs/2026-05-29-consumer-install-helper-design.md` and the README "Adopt in a project" section.
 
 The coverage manifest lives at `.ism-coverage.toml` in each consumer repo with a sibling `.ism-coverage/evidence/` for binaries. Schema and tool surface are documented in `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md` and in the README. A starter template ships at `src/ism_mcp/data/coverage_template.toml`.
 
@@ -87,12 +89,9 @@ CI should print `==> CI OK`. Slow suite: `./scripts/ci.sh slow`.
 
 ## Next action
 
-Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and pick the next sub-project:
+Sub-project C is the only remaining roadmap item. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it.
 
-1. **Sub-project C: Graph and curated cuts.** `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs a brainstorm cycle before a plan is written.
-2. **Sub-project E: Consumer install helper.** `ism-mcp install --project PATH`. Now unblocked because D's manifest shape is locked in. Needs a brainstorm cycle.
-
-Either can ship next. C is a query-side extension; E is consumer-side ergonomics. Pick based on what consumers ask for first.
+**Sub-project C: Graph and curated cuts.** `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. A query-side extension that reuses B's embeddings for the "semantically similar" neighbours. Needs a brainstorm cycle before a plan is written.
 
 ## Roadmap
 
@@ -102,7 +101,7 @@ Either can ship next. C is a query-side extension; E is consumer-side ergonomics
 | done | B: Hybrid discovery | `ism_applicable`, embeddings, RRF, helpers. |
 | done | D: Project coverage manifest | `.ism-coverage.toml`, `ism_coverage_read/upsert/gaps`. |
 | next | C: Graph and curated cuts | `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs brainstorm. |
-| next | E: Consumer install helper | `ism-mcp install --project PATH`. Needs brainstorm. Unblocked by D landing. |
+| done | E: Consumer install helper | `ism-mcp install --project PATH`, uvx and docker modes. |
 
 Deferred (revisit when consumers ask): revision diff, HTTP/SSE transport, PyPI publish, coverage gate in CI.
 
@@ -120,6 +119,7 @@ Deferred (revisit when consumers ask): revision diff, HTTP/SSE transport, PyPI p
 - **No incremental updates.** Each ingest drops and rebuilds the database.
 - **Single-revision database.** No history across ISM revisions. Defer to plan #3.
 - **No auth on the MCP server.** Local stdio only.
+- **uvx and docker install modes need a published remote.** `ism-mcp install` emits configs that fetch ism-mcp from a pinned git revision. The repository has no remote yet, so publishing it and setting `origin` is a prerequisite before the emitted configs work for anyone, including the author's own user-scope registration. Until then, `install --dry-run` works and the command errors with a clear hint when no remote is detected.
 
 ## Conventions
 
@@ -137,8 +137,8 @@ See `CLAUDE.md` for the canonical list. Highlights:
 1. Read this file (you're here).
 2. Read `CLAUDE.md` for working conventions.
 3. Run the verification block in the "Verifying current state" section above.
-4. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and pick C or E to brainstorm.
+4. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm sub-project C.
 
-Branch state: `main` is the active branch. `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No active feature branch. No remote configured.
+Branch state: `feature/consumer-install-helper` holds sub-project E and is ready to land on `main`. `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No remote configured (see known limitations).
 
 Recent post-audit fix: `store.search` now sanitises free-text into quoted FTS5 phrases, so `ism_search` and `ism_applicable` no longer raise on metacharacters (colons, Windows paths, bare boolean operators). See `store.sanitise_fts_query`.

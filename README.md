@@ -55,6 +55,39 @@ Add to your Claude Code MCP configuration:
 
 Restart Claude Code. The tools listed under [MCP tools](#mcp-tools) become available, led by `ism_applicable` for ranked discovery.
 
+## Adopt in a project
+
+`ism-mcp install` writes everything a teammate needs into a consumer repo. The database is committed into the repo, so a clone has data without a local ingest.
+
+```bash
+uv run ism-mcp install --project /path/to/consumer-repo
+```
+
+This writes, all idempotent on re-run:
+
+- `.mcp.json` with the `ism` server entry. Other servers in the file are kept.
+- A managed block in `CLAUDE.md` between `<!-- ism-mcp:begin -->` and `<!-- ism-mcp:end -->`, telling agents when to consult the server.
+- `.ism-coverage.toml` scaffolded from the template, only if absent. An existing manifest is never overwritten.
+- `.ism/ism.db`, the database, refreshed on each run.
+
+The default `uvx` mode launches the server with `uvx --from git+<repo>@<rev> ism-mcp serve`. `--repo` defaults to this checkout's `origin` remote and `--rev` to its short HEAD, so the entry pins a reproducible build. A teammate needs only `uv`. The first semantic query downloads the embedding model once, then runs offline.
+
+For air-gapped or locked-down environments, `--mode docker --image <ref>` emits a `docker run` entry that mounts the committed database. Building and hosting the image is left to you.
+
+The database path uses Claude Code's `${CLAUDE_PROJECT_DIR:-.}` expansion, so it resolves to each teammate's project root. Claude Code prompts once per repo to trust a project-scoped server. `claude mcp reset-project-choices` clears the approval.
+
+Use `--dry-run` to see the planned writes without changing anything.
+
+### Prerequisite: publish the server
+
+`uvx` and `docker` both fetch a pinned source, so ism-mcp must reach a git remote before any teammate can run it. Push this repo to a remote and set `origin`. Then migrate your own user-scope registration to the same launch command:
+
+```bash
+claude mcp add ism -s user -- uvx --from git+<origin>@<rev> ism-mcp serve
+```
+
+The user-scope server keeps the default database at `~/.local/share/ism-mcp/ism.db`, which you ingest locally. It carries no `ISM_MCP_DB` override, since that path is only for project installs where the database travels with the repo.
+
 ## Use programmatically
 
 ```python
