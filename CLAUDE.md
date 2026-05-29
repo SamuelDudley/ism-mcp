@@ -10,13 +10,23 @@ Read this before doing any work in this repo. Update it when conventions change.
 
 ```
 src/ism_mcp/         the package
+  __init__.py
+  __main__.py        CLI: ingest, serve, install
   store.py           SQLite schema + queries + FTS5
-  ingest.py          XLSX parser + PDF paragraph extractor
-  server.py          FastMCP server, six tools
-  __main__.py        CLI: ingest, serve
-tests/               pytest suite (added in plan #1)
-docs/plans/          implementation plans
-scripts/             local CI and helper scripts (added in plan #1)
+  ingest.py          XLSX parser + PDF per-control excerpt extractor
+  retrieve.py        cosine search + Reciprocal Rank Fusion
+  embed.py           embedder protocol + fastembed and hash backends
+  classification.py  classification + maturity input normalisation
+  paths.py           repo-path token expansion for query enrichment
+  coverage.py        coverage manifest read, validate, serialise, gaps
+  install.py         consumer-repo install writer
+  server.py          FastMCP server: lookup, discovery, coverage tools
+  data/              path keyword map + coverage template
+tests/               pytest suite with hermetic fixtures
+docs/plans/              older implementation plans
+docs/superpowers/plans/  implementation plans
+docs/superpowers/specs/  design and vision docs
+scripts/ci.sh        local CI entrypoint
 pyproject.toml       uv-managed, hatchling build
 HANDOVER.md          session-to-session handover
 README.md            user-facing install and usage
@@ -28,8 +38,8 @@ README.md            user-facing install and usage
 uv sync                      install all deps
 uv run ism-mcp ingest --xlsx PATH [--pdf PATH] [--revision LABEL]
 uv run ism-mcp serve         start the MCP server over stdio
-uv run pytest                run tests (after plan #1)
-./scripts/ci.sh              full CI suite (after plan #1)
+uv run pytest                run tests
+./scripts/ci.sh              full CI suite (fmt, lint, type, test)
 ```
 
 ## Conventions
@@ -96,7 +106,8 @@ When a plan is complete and its branch is about to land on `main`, run this chec
    - Any deferred items or known gaps that affect the next plan.
    - Quick-orientation steps point at the next plan, not the one just finished.
 8. Commit and push the HANDOVER update.
-9. Working tree clean. Done.
+9. **Fact-check and update `CLAUDE.md`.** Read it against the code that just landed and fix anything stale: the repository layout and module list, the CLI subcommands and tool inventory named in prose, the build and test commands, and any new convention or source-of-truth artifact this round introduced. Commit and push if it changed.
+10. Working tree clean. Done.
 
 If you cannot complete step 7 (the writing agent does not have enough context, or the next plan has not been written yet), say so explicitly. Do not leave a stale handover claiming the project is in a state it is not.
 
