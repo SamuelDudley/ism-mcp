@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 DB_ENV_VALUE = "${CLAUDE_PROJECT_DIR:-.}/.ism/ism.db"
 DB_REPO_PATH = ".ism/ism.db"
 MARKER_BEGIN = "<!-- ism-mcp:begin -->"
@@ -66,3 +69,21 @@ Track coverage in `.ism-coverage.toml`:
 - `ism_coverage_upsert(...)` records how a control is met, with evidence.
 {MARKER_END}
 """
+
+
+def merge_mcp_json(path: Path, name: str, entry: dict, *, dry_run: bool = False) -> str:
+    """Merge one server entry into .mcp.json, preserving other servers."""
+    existed = path.is_file()
+    text = path.read_text() if existed else ""
+    data = json.loads(text) if text.strip() else {}
+    servers = data.setdefault("mcpServers", {})
+    if not existed:
+        action = f"create {path.name} with server '{name}'"
+    elif name in servers:
+        action = f"update server '{name}' in {path.name}"
+    else:
+        action = f"add server '{name}' to {path.name}"
+    if not dry_run:
+        servers[name] = entry
+        path.write_text(json.dumps(data, indent=2) + "\n")
+    return action
