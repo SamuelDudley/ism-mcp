@@ -21,16 +21,16 @@ The coverage manifest lives at `.ism-coverage.toml` in each consumer repo with a
 
 Embeddings are generated at ingest by `bge-small-en-v1.5` via `fastembed`. The default DB at `~/.local/share/ism-mcp/ism.db` includes the `controls_embeddings` sidecar table.
 
-The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 135 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
+The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 165 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
 
-The MCP server is registered at user scope in Claude Code (`claude mcp list` shows `ism: ✓ Connected`) and is reachable from any project. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
+The MCP server is registered in Claude Code project-scoped under `/home/dudley/code/wayland-remote`, launched via `uvx --from git+file:///home/dudley/code/ism-mcp.git@v1 ism-mcp serve` (currently the `v1` tag) against the default DB. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
 
 ## Repository layout
 
 ```
 src/ism_mcp/
   __init__.py
-  __main__.py        CLI entrypoint (ingest, serve)
+  __main__.py        CLI entrypoint (ingest, serve, install)
   store.py           SQLite schema + queries + FTS5
   ingest.py          XLSX parser + PDF per-control excerpt extractor
   retrieve.py        cosine search + Reciprocal Rank Fusion
@@ -38,12 +38,14 @@ src/ism_mcp/
   classification.py  classification + maturity input normalisation
   paths.py           repo-path token expansion for query enrichment
   coverage.py        coverage manifest read, validate, serialise, gaps
+  install.py         consumer-repo install writer
   server.py          FastMCP server: lookup, discovery, coverage tools
   data/              path keyword map + coverage template
 tests/               pytest suite with hermetic fixtures
 scripts/ci.sh        local CI entrypoint
-docs/plans/          implementation plans
-docs/superpowers/specs/   spec and vision docs
+docs/plans/          older implementation plans
+docs/superpowers/plans/   implementation plans
+docs/superpowers/specs/   design and vision docs
 pyproject.toml       uv-managed, hatchling build, ruff + pyright + pytest config
 HANDOVER.md          this file
 CLAUDE.md            project conventions for AI agents

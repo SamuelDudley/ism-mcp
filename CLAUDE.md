@@ -99,6 +99,7 @@ When a plan is complete and its branch is about to land on `main`, run this chec
 5. Push `main` to `origin`.
 6. Delete the merged feature branch (`git branch -d <branch>`).
 7. **Update `HANDOVER.md`** so it reflects:
+   - Fact-check it against the code that just landed: the repository layout and module list, the tool inventory, the verification block commands and expected counts, and the branch and remote state must all match reality. Fix what drifted.
    - Plans completed in this round (mark DONE in the roadmap table).
    - The next plan's exact file path under "Next action", with one-line description of scope.
    - Decisions locked in for the next plan (so the next agent does not re-litigate them).
