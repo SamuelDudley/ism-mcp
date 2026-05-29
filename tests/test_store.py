@@ -38,6 +38,25 @@ def test_fts_search_returns_empty_for_no_match(db, sample_controls):
     assert store.search(db, "xyzzy", limit=10) == []
 
 
+def test_search_tolerates_fts_metacharacters(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    # Free-text work descriptions carry FTS5 metacharacters such as a colon.
+    # Search must not raise and must still match on the real terms.
+    results = store.search(db, "network: encryption")
+    assert [c.identifier for c in results] == ["ISM-9001"]
+
+
+def test_search_does_not_raise_on_operator_soup(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    for query in ["rate AND OR limit", "(unbalanced", "* prefix", "NEAR(x", "C:\\path"]:
+        assert isinstance(store.search(db, query), list)
+
+
+def test_search_returns_empty_for_query_without_word_characters(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    assert store.search(db, "*** (...) ***") == []
+
+
 def test_list_by_classification_filters(db, sample_controls):
     store.insert_controls(db, sample_controls)
     ts = store.list_by_classification(db, "TS")

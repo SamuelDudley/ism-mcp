@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+_FTS_WORD = re.compile(r"\w+", re.UNICODE)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -183,7 +186,20 @@ def get_control(conn: sqlite3.Connection, identifier: str) -> Control | None:
     return _row_to_control(row) if row else None
 
 
+def sanitise_fts_query(query: str) -> str:
+    """Quote each run of word characters as an FTS5 phrase.
+
+    Free-text input may contain FTS5 operators or punctuation that would
+    otherwise raise a syntax or unknown-column error. Quoting neutralises them
+    and treats every token as a literal term.
+    """
+    return " ".join(f'"{word}"' for word in _FTS_WORD.findall(query))
+
+
 def search(conn: sqlite3.Connection, query: str, limit: int = 10) -> list[Control]:
+    match = sanitise_fts_query(query)
+    if not match:
+        return []
     rows = conn.execute(
         """
         SELECT c.* FROM controls c
@@ -192,7 +208,7 @@ def search(conn: sqlite3.Connection, query: str, limit: int = 10) -> list[Contro
         ORDER BY rank
         LIMIT ?
         """,
-        (query, limit),
+        (match, limit),
     ).fetchall()
     return [_row_to_control(r) for r in rows]
 
