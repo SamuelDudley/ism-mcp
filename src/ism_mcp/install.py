@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+from importlib.resources import files
 from pathlib import Path
 
 DB_ENV_VALUE = "${CLAUDE_PROJECT_DIR:-.}/.ism/ism.db"
@@ -107,3 +109,27 @@ def write_managed_block(path: Path, block: str, *, dry_run: bool = False) -> str
     if not dry_run:
         path.write_text(new)
     return action
+
+
+def scaffold_manifest(path: Path, template_text: str, *, dry_run: bool = False) -> str:
+    """Write the manifest template only when no manifest exists."""
+    if path.is_file():
+        return f"keep existing {path.name}"
+    if not dry_run:
+        path.write_text(template_text)
+    return f"create {path.name} from template"
+
+
+def copy_database(src: Path, dst: Path, *, dry_run: bool = False) -> str:
+    """Copy the database into the repo, creating the parent directory."""
+    if not src.is_file():
+        raise FileNotFoundError(f"source database not found at {src}. Run 'ism-mcp ingest' first.")
+    action = f"overwrite {dst}" if dst.is_file() else f"copy database to {dst}"
+    if not dry_run:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+    return action
+
+
+def _manifest_template() -> str:
+    return files("ism_mcp.data").joinpath("coverage_template.toml").read_text()
