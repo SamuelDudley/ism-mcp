@@ -25,7 +25,7 @@ The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PD
 
 A pre-public-release polish pass landed on `feature/public-v1.1-polish` (pending merge to `main`): MIT `LICENSE` plus public `pyproject` metadata (version 1.1.0, authors, urls, classifiers); a fixed `ism_applicable` `why` provenance bug (semantic and path tags were applied to every result); `serve --db` now honoured at runtime and the server reuses one cached DB connection; clean errors for malformed coverage manifests and `.mcp.json`; coverage attachment paths rejected when they escape the project root; classification separator variants; smaller correctness nits; a GitHub Actions CI workflow; `SECURITY.md` and `CONTRIBUTING.md`; and `scripts/prepare-public-release.sh`, which builds a clean public tree excluding `HANDOVER.md` and `docs/` (kept private) and is the artifact pushed to the public GitHub repo.
 
-The MCP server is registered in Claude Code project-scoped under `/home/dudley/code/wayland-remote`, launched via `uvx --from git+<origin>@<tag> ism-mcp serve`. The release target is the public GitHub repo `https://github.com/samueldudley/ism-mcp.git` at tag `v1.1`; re-point `origin` there before generating consumer configs. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
+The MCP server is registered in Claude Code project-scoped under `/home/dudley/code/wayland-remote`, launched via `uvx --from git+<repo>@<tag> ism-mcp serve`. The public release target is `https://github.com/samueldudley/ism-mcp` at tag `v1.1`, published as a clean snapshot via `scripts/prepare-public-release.sh`. This development repo stays private; consumer configs point at the public URL via `ism-mcp install --repo`. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
 
 ## Repository layout
 
@@ -103,7 +103,7 @@ Land `feature/public-v1.1-polish` and publish v1.1:
 1. `./scripts/ci.sh` on the branch (confirm `==> CI OK`), fast-forward merge to `main`, re-run CI on `main`.
 2. Create the public GitHub repo `samueldudley/ism-mcp`.
 3. Run `./scripts/prepare-public-release.sh` to build the clean public tree, then push it and tag `v1.1` (the script prints the exact commands).
-4. Re-point this repo's `origin` at the GitHub URL so `ism-mcp install` emits a reachable source.
+4. Generate consumer configs with `ism-mcp install --repo https://github.com/samueldudley/ism-mcp.git`. This dev repo stays private, so its `origin` is not the public remote.
 
 After that, sub-project C is the only remaining roadmap item. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it.
 
@@ -135,7 +135,7 @@ Deferred (revisit when consumers ask): revision diff, HTTP/SSE transport, PyPI p
 - **No incremental updates.** Each ingest drops and rebuilds the database.
 - **Single-revision database.** No history across ISM revisions. Defer to plan #3.
 - **No auth on the MCP server.** Local stdio only.
-- **uvx and docker install modes fetch from a git remote.** Re-point `origin` to the public GitHub repo `https://github.com/samueldudley/ism-mcp.git` before generating consumer configs, so the emitted `uvx --from git+...` entry resolves on other machines. `ism-mcp install` auto-detects `origin`.
+- **uvx and docker install modes fetch from a git remote.** Generate consumer configs against the public URL with `ism-mcp install --repo https://github.com/samueldudley/ism-mcp.git`, so the emitted `uvx --from git+...` entry resolves on other machines. This development repo stays private and is not the public remote.
 
 ## Conventions
 

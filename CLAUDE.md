@@ -114,25 +114,22 @@ If you cannot complete step 7 (the writing agent does not have enough context, o
 
 ## Releasing
 
-Deployments launch the server with `uvx --from git+<origin>@<tag> ism-mcp serve`, so a release is a tagged revision pushed to `origin`. `origin` is the public GitHub repository at `https://github.com/samueldudley/ism-mcp.git`, which `ism-mcp install` auto-detects so emitted configs fetch from there.
+Deployments launch the server with `uvx --from git+<repo>@<tag> ism-mcp serve`, fetching from the public GitHub repository `https://github.com/samueldudley/ism-mcp`. That repo is a clean snapshot built by `scripts/prepare-public-release.sh`. This development repository stays private (it carries `HANDOVER.md` and `docs/`), so do not push it to the public remote.
 
 To cut a release:
 
 1. Land the work on `main` and run `./scripts/ci.sh`. Confirm `==> CI OK`.
-2. Tag an annotated version and push `main` with the tag.
+2. Build and publish the public snapshot. The script prints the `git init`/commit/push and `git tag -a vX.Y` commands for the public repo.
 
    ```bash
-   git tag -a v2 -m "ism-mcp v2 <one-line scope>"
-   git push origin main v2
+   ./scripts/prepare-public-release.sh
    ```
 
-3. Point deployments at the tag. With the install helper, pass the tag as the revision.
+3. Point deployments at the tag, fetching from the public URL.
 
    ```bash
-   uv run ism-mcp install --project PATH --rev v2
+   uv run ism-mcp install --project PATH --repo https://github.com/samueldudley/ism-mcp.git --rev vX.Y
    ```
-
-   For a hand-managed registration, set `@v2` in the `uvx --from git+<origin>@v2` args, then reconnect the MCP client.
 
 Cut a new tag per release. Do not move an existing tag. `uvx` caches a build per ref, so a moved tag keeps serving stale code until the cache is cleared with `uvx --reinstall`.
 
