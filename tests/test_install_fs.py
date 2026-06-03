@@ -101,6 +101,11 @@ def test_manifest_template_has_scope_section():
     assert "[scope]" in text
 
 
+def test_manifest_template_omits_maturity_default():
+    # maturity narrows scope to the Essential Eight subset, so the scaffold must not preset it.
+    assert "maturity" not in install._manifest_template()
+
+
 def test_copy_database_copies_and_creates_parent(tmp_path):
     src = tmp_path / "ism.db"
     src.write_bytes(b"SQLite format 3\x00")

@@ -2,7 +2,6 @@ schema_version = 1
 
 [scope]
 classification = "P"
-maturity = "ML2"
 sections = []
 
 [project]

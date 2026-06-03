@@ -205,7 +205,9 @@ def ism_applicable(
     """Rank ISM controls relevant to a free-text description of planned or current work.
 
     Uses hybrid retrieval (semantic embeddings + FTS5 BM25) fused with Reciprocal Rank Fusion.
-    Optional filters: classification (NC|OS|P|S|TS or OFFICIAL|...|TOP_SECRET), maturity (ML1|ML2|ML3),
+    Optional filters: classification (NC|OS|P|S|TS or OFFICIAL|...|TOP_SECRET),
+    maturity (ML1|ML2|ML3, Essential Eight only: only ~126 of 1081 controls carry a maturity rating,
+    so passing maturity drops every other control; leave it unset unless scoping to the Essential Eight),
     tags (validated against ism_list_sections), paths (repo paths whose tokens expand the lexical query).
     `score` in each result is a normalised RRF score in [0.0, 1.0], not a probability.
     """

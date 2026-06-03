@@ -85,7 +85,7 @@ Use `--dry-run` to see the planned writes without changing anything.
 
 ### Fetching from the published remote
 
-`uvx` and `docker` both fetch a pinned source. `ism-mcp install` defaults `--repo` to this checkout's `origin`, so point `origin` at the published repository (`https://github.com/samueldudley/ism-mcp.git`) before generating consumer configs. To register the server at user scope against the published source:
+`uvx` and `docker` both fetch a pinned source. Point `ism-mcp install` at the published repository with `--repo https://github.com/samueldudley/ism-mcp.git` (if you cloned from there, that is already your `origin` and the default works). To register the server at user scope against the published source:
 
 ```bash
 claude mcp add ism -s user -- uvx --from git+https://github.com/samueldudley/ism-mcp.git@v1.1 ism-mcp serve
@@ -145,13 +145,14 @@ The headline use case is `ism_applicable`. The agent describes the work in plain
 ism_applicable(
     work="adding JWT refresh and idle session timeout to our auth flow",
     classification="OFFICIAL",
-    maturity="ML2",
     paths=["src/auth/jwt.py", "src/auth/session.py"],
     limit=10,
 )
 ```
 
 Returns a ranked list with `identifier`, `topic`, `section`, `description`, `applies`, `maturity`, a normalised RRF `score` in `[0.0, 1.0]`, and a `why` list naming the signals that surfaced each result (`semantic`, `lexical`, `path:<token>`). `verbose=true` adds the PDF excerpt.
+
+> **Maturity is Essential Eight only.** `ML1/ML2/ML3` exist for the ~126 of 1081 controls mapped to the Essential Eight Maturity Model, not the wider ISM. Passing `maturity=` (here, or in a manifest `[scope]`) drops every control with no maturity rating, so a `PROTECTED` scope collapses from ~966 controls to the ~87 that are also Essential Eight ML2. Leave `maturity` unset unless you are specifically tracking Essential Eight maturity.
 
 Under the hood: a `bge-small-en-v1.5` embedding of the work text is cosine-matched against per-control embeddings, fused with FTS5 BM25 via Reciprocal Rank Fusion, then post-filtered.
 
@@ -190,7 +191,6 @@ schema_version = 1
 
 [scope]
 classification = "P"
-maturity = "ML2"
 sections = ["Authentication hardening", "Cryptographic fundamentals"]
 
 [project]
@@ -210,6 +210,8 @@ commits = ["abc1234"]
 path = ".ism-coverage/evidence/ISM-0428/lock-prompt.png"
 description = "Admin console at 14:01 showing session-expired modal"
 ```
+
+`[scope]` defines the in-scope control set that `ism_coverage_gaps` measures against. Set `classification` (and optionally narrow by `sections`). Do not set `maturity` unless you are tracking Essential Eight maturity specifically: it filters to the Essential Eight subset and drops every other control from scope (see the maturity note under [Discovery for agents](#discovery-for-agents)).
 
 Recommended layout for binary evidence:
 
