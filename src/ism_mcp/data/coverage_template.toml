@@ -1,29 +1,10 @@
 schema_version = 1
 
 [scope]
-classification = "P"           # NC | OS | P | S | TS
-maturity = "ML2"               # ML1 | ML2 | ML3, optional
-sections = []                  # narrow to specific ISM sections, optional
+classification = "P"
+maturity = "ML2"
+sections = []
 
 [project]
 name = ""
 description = ""
-
-# Each control entry:
-#
-# [controls."ISM-XXXX"]
-# status = "covered"           # covered | partial | not-applicable | deferred
-# how_met = """Project-specific narrative."""
-# last_reviewed = 2026-05-28
-# reviewed_by = "name"         # optional
-# next_review = 2027-05-28     # optional
-# files = ["src/path.py:1-20"]
-# commits = ["abc1234"]
-#
-# [[controls."ISM-XXXX".urls]]
-# url = "https://..."
-# description = "Why this URL is relevant"
-#
-# [[controls."ISM-XXXX".attachments]]
-# path = ".ism-coverage/evidence/ISM-XXXX/screenshot.png"
-# description = "What this evidence shows"

@@ -223,7 +223,9 @@ your-repo/
         tls-handshake.pcapng
 ```
 
-A template lives at `src/ism_mcp/data/coverage_template.toml` if you want to copy and start from a known-good shape.
+A template lives at `src/ism_mcp/data/coverage_template.toml` if you want to copy and start from a known-good shape. The fields and their allowed values are shown in the example above.
+
+The manifest is machine-managed: `ism_coverage_upsert` rewrites the whole file, so comments are not preserved. Keep narrative in `how_met` and evidence in the structured fields rather than in TOML comments.
 
 Reference design: `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md`.
 
