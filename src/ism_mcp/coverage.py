@@ -79,6 +79,9 @@ def read_manifest_text(text: str, manifest_path: Path) -> Manifest:
             if path_ref is None:
                 continue
             resolved = (project_root / path_ref).resolve()
+            if not _within(project_root, resolved):
+                warnings.append(f"{ident}: attachment path escapes project root: {path_ref}")
+                continue
             if not resolved.is_file():
                 warnings.append(f"{ident}: attachment not found on disk: {path_ref}")
 
@@ -93,6 +96,9 @@ def read_manifest_text(text: str, manifest_path: Path) -> Manifest:
 
 
 def _entry_from_dict(identifier: str, body: dict) -> ManifestEntry:
+    for required in ("status", "how_met"):
+        if required not in body:
+            raise ValueError(f"{identifier}: missing required key {required!r}")
     last_reviewed = body.get("last_reviewed")
     if not isinstance(last_reviewed, date):
         raise ValueError(f"{identifier}: last_reviewed must be a TOML date, got {last_reviewed!r}")
@@ -108,9 +114,21 @@ def _entry_from_dict(identifier: str, body: dict) -> ManifestEntry:
         next_review=next_review,
         files=list(body.get("files") or []),
         commits=list(body.get("commits") or []),
-        urls=[dict(u) for u in (body.get("urls") or [])],
-        attachments=[dict(a) for a in (body.get("attachments") or [])],
+        urls=[_as_table(identifier, "url", u) for u in (body.get("urls") or [])],
+        attachments=[
+            _as_table(identifier, "attachment", a) for a in (body.get("attachments") or [])
+        ],
     )
+
+
+def _as_table(identifier: str, kind: str, item: object) -> dict:
+    if not isinstance(item, dict):
+        raise ValueError(f"{identifier}: each {kind} entry must be a table")
+    return dict(item)
+
+
+def _within(project_root: Path, resolved: Path) -> bool:
+    return resolved.is_relative_to(project_root.resolve())
 
 
 VALID_STATUSES: frozenset[str] = frozenset(["covered", "partial", "not-applicable", "deferred"])
@@ -135,6 +153,10 @@ def validate_entry(entry: ManifestEntry, project_root: Path) -> None:
         if "description" not in a or not a["description"].strip():
             raise ValueError(f"{entry.identifier}: attachment {a['path']!r} missing description")
         resolved = (project_root / a["path"]).resolve()
+        if not _within(project_root, resolved):
+            raise ValueError(
+                f"{entry.identifier}: attachment path escapes project root: {a['path']}"
+            )
         if not resolved.is_file():
             raise FileNotFoundError(f"{entry.identifier}: attachment not found: {a['path']}")
 

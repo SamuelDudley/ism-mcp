@@ -25,7 +25,7 @@ description = "Demo admin console"
 status = "covered"
 how_met = "Sessions terminate after 14 min."
 last_reviewed = 2026-05-28
-reviewed_by = "sam.dudley"
+reviewed_by = "reviewer"
 files = ["src/auth/session.py:42-87"]
 commits = ["abc1234"]
 
@@ -113,3 +113,24 @@ def test_read_manifest_no_warnings_when_attachments_exist(tmp_path):
     path.write_text(SAMPLE_TOML)
     m = read_manifest(path)
     assert m.warnings == []
+
+
+def test_read_manifest_missing_status_raises_valueerror():
+    bad = 'schema_version = 1\n\n[controls."ISM-0428"]\nhow_met = "x"\nlast_reviewed = 2026-05-28\n'
+    with pytest.raises(ValueError, match="status"):
+        read_manifest_text(bad, Path("/x/.ism-coverage.toml"))
+
+
+def test_read_manifest_warns_when_attachment_escapes_root(tmp_path):
+    toml = (
+        'schema_version = 1\n\n[controls."ISM-0428"]\n'
+        'status = "covered"\nhow_met = "x"\nlast_reviewed = 2026-05-28\n\n'
+        '[[controls."ISM-0428".attachments]]\n'
+        'path = "../../../etc/hostname"\ndescription = "x"\n'
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = repo / ".ism-coverage.toml"
+    path.write_text(toml)
+    m = read_manifest(path)
+    assert any("escapes project root" in w for w in m.warnings), m.warnings

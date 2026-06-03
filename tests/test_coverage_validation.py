@@ -65,6 +65,18 @@ def test_attachment_path_must_exist(tmp_path):
         validate_entry(entry, project_root=tmp_path)
 
 
+def test_attachment_absolute_path_escaping_root_raises(tmp_path):
+    entry = _entry(attachments=[{"path": "/etc/hostname", "description": "x"}])
+    with pytest.raises(ValueError, match="escapes project root"):
+        validate_entry(entry, project_root=tmp_path)
+
+
+def test_attachment_traversal_escaping_root_raises(tmp_path):
+    entry = _entry(attachments=[{"path": "../../etc/hostname", "description": "x"}])
+    with pytest.raises(ValueError, match="escapes project root"):
+        validate_entry(entry, project_root=tmp_path)
+
+
 def test_attachment_path_resolves_relative_to_project_root(tmp_path):
     sub = tmp_path / ".ism-coverage" / "evidence" / "ISM-0428"
     sub.mkdir(parents=True)

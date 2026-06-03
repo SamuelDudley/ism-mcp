@@ -14,7 +14,7 @@ def test_round_trip_preserves_all_fields(tmp_path):
         status="covered",
         how_met="Sessions terminate after 14 min of idle.",
         last_reviewed=date(2026, 5, 28),
-        reviewed_by="sam.dudley",
+        reviewed_by="reviewer",
         next_review=date(2027, 5, 28),
         files=["src/auth/session.py:42-87", "tests/test_session_lock.py:15-60"],
         commits=["abc1234"],

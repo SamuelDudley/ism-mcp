@@ -41,6 +41,7 @@ def project_with_ism_db(tmp_path, sample_controls, monkeypatch):
     store.insert_controls(conn, sample_controls)
     conn.close()
     monkeypatch.setattr(server, "DEFAULT_DB", db_path)
+    monkeypatch.delenv("ISM_MCP_DB", raising=False)
     monkeypatch.setenv("ISM_MCP_EMBEDDER", "none")
     server._reset_runtime_cache()
     yield db_path
@@ -215,3 +216,19 @@ def test_coverage_gaps_returns_error_when_manifest_missing(
 def test_coverage_gaps_limit_truncates(project_with_manifest, project_with_ism_db):
     result = json.loads(server.ism_coverage_gaps(limit=1))
     assert len(result["gaps"]) <= 1
+
+
+def test_coverage_upsert_surfaces_sibling_attachment_warning(
+    tmp_path, monkeypatch, project_with_ism_db
+):
+    (tmp_path / ".ism-coverage.toml").write_text(
+        SEED_TOML + '\n[[controls."ISM-9001".attachments]]\n'
+        'path = ".ism-coverage/evidence/missing.png"\n'
+        'description = "screenshot"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(
+        server.ism_coverage_upsert(identifier="ISM-9002", status="covered", how_met="x")
+    )
+    assert result["ok"] is True
+    assert any("missing.png" in w for w in result["warnings"]), result["warnings"]

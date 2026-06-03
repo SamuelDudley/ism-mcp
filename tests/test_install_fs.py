@@ -41,6 +41,13 @@ def test_merge_dry_run_does_not_write(tmp_path):
     assert not path.exists()
 
 
+def test_merge_rejects_non_object_json(tmp_path):
+    path = tmp_path / ".mcp.json"
+    path.write_text("[]")
+    with pytest.raises(ValueError, match="JSON object"):
+        install.merge_mcp_json(path, "ism", {"command": "uvx"})
+
+
 def test_managed_block_creates_file_when_absent(tmp_path):
     path = tmp_path / "CLAUDE.md"
     action = install.write_managed_block(path, install.claude_md_block())

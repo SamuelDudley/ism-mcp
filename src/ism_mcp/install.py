@@ -78,6 +78,8 @@ def merge_mcp_json(path: Path, name: str, entry: dict, *, dry_run: bool = False)
     existed = path.is_file()
     text = path.read_text() if existed else ""
     data = json.loads(text) if text.strip() else {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path.name} is not a JSON object")
     servers = data.setdefault("mcpServers", {})
     if not existed:
         action = f"create {path.name} with server '{name}'"
