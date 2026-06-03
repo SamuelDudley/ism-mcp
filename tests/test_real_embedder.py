@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
+from ism_mcp import server, store
 from ism_mcp.embed import FastEmbedEmbedder
+from ism_mcp.ingest import embed_controls
 
 
 @pytest.mark.slow
@@ -30,3 +34,27 @@ def test_fastembed_orders_session_query_above_unrelated():
     sims = vectors @ query
     ranked = np.argsort(-sims)
     assert ranked[0] == 0
+
+
+@pytest.mark.slow
+def test_applicable_surfaces_a_lexically_disjoint_semantic_match(
+    tmp_path, sample_controls, monkeypatch
+):
+    db_path = tmp_path / "ism.db"
+    conn = store.open_db(db_path)
+    store.insert_controls(conn, sample_controls)
+    embedder = FastEmbedEmbedder()
+    fetched = [c for c in (store.get_control(conn, c.identifier) for c in sample_controls) if c]
+    store.insert_embeddings(conn, list(embed_controls(fetched, embedder)))
+    conn.close()
+    monkeypatch.setattr(server, "DEFAULT_DB", db_path)
+    monkeypatch.setenv("ISM_MCP_EMBEDDER", "fastembed")
+    server._reset_runtime_cache()
+    # "idle logout window" shares no words with the session control's text, so a hit
+    # there can only come from semantic retrieval, and its why must say so.
+    result = json.loads(server.ism_applicable("idle logout window", limit=3))
+    server._reset_runtime_cache()
+    nine2 = next((r for r in result["results"] if r["identifier"] == "ISM-9002"), None)
+    assert nine2 is not None, [r["identifier"] for r in result["results"]]
+    assert "semantic" in nine2["why"]
+    assert "lexical" not in nine2["why"]

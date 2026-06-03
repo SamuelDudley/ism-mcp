@@ -54,7 +54,7 @@ CREATE TRIGGER IF NOT EXISTS controls_ai AFTER INSERT ON controls BEGIN
 END;
 
 CREATE TABLE IF NOT EXISTS controls_embeddings (
-    rowid     INTEGER PRIMARY KEY REFERENCES controls(rowid) ON DELETE CASCADE,
+    rowid     INTEGER PRIMARY KEY,
     embedding BLOB NOT NULL
 );
 """

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import openpyxl
 
 from ism_mcp import store
@@ -101,3 +102,24 @@ def test_ingest_round_trip_persists_embeddings(tmp_path):
     matrix, ids = store.load_embedding_matrix(conn, dim=384)
     assert matrix.shape == (1, 384)
     assert ids == [1]
+
+
+def test_embed_controls_rowid_aligns_with_control_text(db, sample_controls):
+    store.insert_controls(db, sample_controls)
+    fetched = [c for c in (store.get_control(db, c.identifier) for c in sample_controls) if c]
+    embedder = DeterministicHashEmbedder(dim=384)
+    store.insert_embeddings(db, list(embed_controls(fetched, embedder)))
+    matrix, ids = store.load_embedding_matrix(db, dim=384)
+    rowid_by_id = {
+        r["identifier"]: r["rowid"] for r in db.execute("SELECT rowid, identifier FROM controls")
+    }
+    # The embedding stored at a control's rowid must be that control's own text vector,
+    # so a positional misalignment between embed order and rowid would fail here.
+    target = store.get_control(db, "ISM-9002")
+    assert target is not None
+    text = (
+        f"{target.topic}. {target.section}. {target.description} {(target.pdf_excerpt or '')[:500]}"
+    )
+    expected = embedder.embed([text])[0]
+    pos = ids.index(rowid_by_id["ISM-9002"])
+    np.testing.assert_allclose(matrix[pos], expected, atol=1e-6)

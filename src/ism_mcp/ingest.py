@@ -13,7 +13,6 @@ import pdfplumber
 from .embed import Embedder
 from .store import CLASSIFICATIONS, MATURITIES, Control
 
-CONTROLS_SHEET = "Controls - March 2026"
 HEADER_ROW = 2
 DATA_START_ROW = 3
 
@@ -84,8 +83,9 @@ def extract_excerpts_from_lines(
             i += 1
         narrative = _paragraph_before(lines, label_positions[run_start][0])
         label_page = page_of_line[label_positions[run_start][0]]
-        for j in range(run_start, i + 1):
-            excerpts[label_positions[j][1]] = (narrative, label_page)
+        if narrative:
+            for j in range(run_start, i + 1):
+                excerpts[label_positions[j][1]] = (narrative, label_page)
         i += 1
     return excerpts
 
@@ -149,7 +149,12 @@ def _yes(v) -> bool:
 
 
 def embed_controls(controls: list[Control], embedder: Embedder) -> Iterator[tuple[int, bytes]]:
-    """Yield (rowid, normalised float32 BLOB) for each control."""
+    """Yield (rowid, normalised float32 BLOB) for each control.
+
+    Rowids are assigned by list position starting at 1. The caller must pass controls in
+    the order they were inserted into a freshly reset `controls` table so that position i
+    maps to DB rowid i.
+    """
     texts = [
         f"{c.topic}. {c.section}. {c.description} {(c.pdf_excerpt or '')[:500]}" for c in controls
     ]

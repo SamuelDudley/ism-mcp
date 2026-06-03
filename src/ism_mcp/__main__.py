@@ -1,4 +1,4 @@
-"""CLI entrypoint: `ism-mcp ingest ...` and `ism-mcp serve`."""
+"""CLI entrypoint: ingest, serve, and install subcommands."""
 
 from __future__ import annotations
 

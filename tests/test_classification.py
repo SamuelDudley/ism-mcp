@@ -58,3 +58,16 @@ def test_normalise_maturity(raw, expected):
 def test_normalise_maturity_rejects_unknown():
     with pytest.raises(ValueError, match="unknown maturity"):
         normalise_maturity("ML4")
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("top-secret", "TS"),
+        ("OFFICIAL Sensitive", "OS"),
+        ("non classified", "NC"),
+        ("  PROTECTED  ", "P"),
+    ],
+)
+def test_classification_accepts_separator_variants(raw, expected):
+    assert normalise_classification(raw) == expected

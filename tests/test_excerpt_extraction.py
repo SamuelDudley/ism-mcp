@@ -2,7 +2,29 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from ism_mcp import ingest, store
 from ism_mcp.ingest import extract_excerpts_from_lines, extract_excerpts_from_text
+
+
+class _FakePage:
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def extract_text(self) -> str:
+        return self._text
+
+
+class _FakePdf:
+    def __init__(self, pages: list[_FakePage]) -> None:
+        self.pages = pages
+
+    def __enter__(self) -> _FakePdf:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
 
 
 def test_extracts_narrative_paragraph_preceding_control_label():
@@ -55,3 +77,46 @@ def test_narrative_can_cross_page_boundary():
     assert "More narrative" in excerpt
     assert "Control:" not in excerpt
     assert page == 18
+
+
+def test_label_without_preceding_narrative_is_skipped():
+    text = "Control: ISM-1234; Revision: 1; Updated: May-26; Applicable: NC"
+    assert extract_excerpts_from_text(text, page_no=1) == {}
+
+
+def _control(
+    identifier: str, *, pdf_excerpt: str | None = None, pdf_page: int | None = None
+) -> store.Control:
+    return store.Control(
+        identifier=identifier,
+        guideline="Guidelines for testing",
+        section="Encryption",
+        topic="Network encryption",
+        revision="1",
+        updated="May-26",
+        description="x",
+        applies=dict.fromkeys(store.CLASSIFICATIONS, True),
+        maturity=dict.fromkeys(store.MATURITIES, False),
+        pdf_excerpt=pdf_excerpt,
+        pdf_page=pdf_page,
+    )
+
+
+def test_attach_pdf_excerpts_attaches_by_identifier_and_leaves_others(monkeypatch):
+    pages = [
+        _FakePage("Network encryption protects data in transit.\nControl: ISM-9001; Revision: 1"),
+        _FakePage("Sessions must terminate when a user goes idle.\nControl: ISM-9002; Revision: 1"),
+    ]
+    monkeypatch.setattr(ingest.pdfplumber, "open", lambda _path: _FakePdf(pages))
+    controls = [
+        _control("ISM-9001"),
+        _control("ISM-9002"),
+        _control("ISM-9003", pdf_excerpt="pre-existing", pdf_page=7),
+    ]
+    out = ingest.attach_pdf_excerpts(controls, Path("ignored.pdf"))
+    by_id = {c.identifier: c for c in out}
+    assert "Network encryption protects data in transit." in (by_id["ISM-9001"].pdf_excerpt or "")
+    assert by_id["ISM-9001"].pdf_page == 1
+    assert by_id["ISM-9002"].pdf_page == 2
+    assert by_id["ISM-9003"].pdf_excerpt == "pre-existing"
+    assert by_id["ISM-9003"].pdf_page == 7
