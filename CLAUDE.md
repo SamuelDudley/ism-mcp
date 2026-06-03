@@ -114,7 +114,7 @@ If you cannot complete step 7 (the writing agent does not have enough context, o
 
 ## Releasing
 
-Deployments launch the server with `uvx --from git+<origin>@<tag> ism-mcp serve`, so a release is a tagged revision pushed to `origin`. `origin` is a bare repo at `file:///home/dudley/code/ism-mcp.git`. It serves deployments on this machine. A team-reachable host (GitHub or private) is still pending before off-machine consumers can fetch.
+Deployments launch the server with `uvx --from git+<origin>@<tag> ism-mcp serve`, so a release is a tagged revision pushed to `origin`. `origin` is the public GitHub repository at `https://github.com/samueldudley/ism-mcp.git`, which `ism-mcp install` auto-detects so emitted configs fetch from there.
 
 To cut a release:
 

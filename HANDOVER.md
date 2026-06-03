@@ -1,6 +1,6 @@
 # Next-Session Handover
 
-> Last updated: 2026-05-29 (post install-helper). Read this first when picking up the project.
+> Last updated: 2026-06-04 (v1.1 public-release polish). Read this first when picking up the project.
 
 ## What this is
 
@@ -21,9 +21,11 @@ The coverage manifest lives at `.ism-coverage.toml` in each consumer repo with a
 
 Embeddings are generated at ingest by `bge-small-en-v1.5` via `fastembed`. The default DB at `~/.local/share/ism-mcp/ism.db` includes the `controls_embeddings` sidecar table.
 
-The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 165 fast tests plus 2 opt-in slow tests behind `./scripts/ci.sh slow`.
+The hardening foundation (pytest, ruff, pyright, `scripts/ci.sh`, per-control PDF excerpts) is in place. Test suite is 198 fast tests plus 3 opt-in slow tests behind `./scripts/ci.sh slow`.
 
-The MCP server is registered in Claude Code project-scoped under `/home/dudley/code/wayland-remote`, launched via `uvx --from git+file:///home/dudley/code/ism-mcp.git@v1 ism-mcp serve` (currently the `v1` tag) against the default DB. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
+A pre-public-release polish pass landed on `feature/public-v1.1-polish` (pending merge to `main`): MIT `LICENSE` plus public `pyproject` metadata (version 1.1.0, authors, urls, classifiers); a fixed `ism_applicable` `why` provenance bug (semantic and path tags were applied to every result); `serve --db` now honoured at runtime and the server reuses one cached DB connection; clean errors for malformed coverage manifests and `.mcp.json`; coverage attachment paths rejected when they escape the project root; classification separator variants; smaller correctness nits; a GitHub Actions CI workflow; `SECURITY.md` and `CONTRIBUTING.md`; and `scripts/prepare-public-release.sh`, which builds a clean public tree excluding `HANDOVER.md` and `docs/` (kept private) and is the artifact pushed to the public GitHub repo.
+
+The MCP server is registered in Claude Code project-scoped under `/home/dudley/code/wayland-remote`, launched via `uvx --from git+<origin>@<tag> ism-mcp serve`. The release target is the public GitHub repo `https://github.com/samueldudley/ism-mcp.git` at tag `v1.1`; re-point `origin` there before generating consumer configs. `~/.claude/CLAUDE.md` carries a medium-aggression trigger that prompts Claude to reach for `mcp__ism__ism_applicable` on AU government security / ISM / Essential Eight / security-review topics.
 
 ## Repository layout
 
@@ -43,11 +45,16 @@ src/ism_mcp/
   data/              path keyword map + coverage template
 tests/               pytest suite with hermetic fixtures
 scripts/ci.sh        local CI entrypoint
+scripts/prepare-public-release.sh  build the public tree (excludes HANDOVER.md and docs/)
+.github/workflows/ci.yml  GitHub Actions: fmt, lint, type, test (slow on demand)
 docs/plans/          older implementation plans
 docs/superpowers/plans/   implementation plans
 docs/superpowers/specs/   design and vision docs
 pyproject.toml       uv-managed, hatchling build, ruff + pyright + pytest config
-HANDOVER.md          this file
+LICENSE              MIT
+CONTRIBUTING.md      contributor workflow and conventions
+SECURITY.md          vulnerability reporting
+HANDOVER.md          this file (private, excluded from the public tree)
 CLAUDE.md            project conventions for AI agents
 README.md            install, ingest, MCP config, dev workflow
 ```
@@ -91,7 +98,14 @@ CI should print `==> CI OK`. Slow suite: `./scripts/ci.sh slow`.
 
 ## Next action
 
-Sub-project C is the only remaining roadmap item. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it.
+Land `feature/public-v1.1-polish` and publish v1.1:
+
+1. `./scripts/ci.sh` on the branch (confirm `==> CI OK`), fast-forward merge to `main`, re-run CI on `main`.
+2. Create the public GitHub repo `samueldudley/ism-mcp`.
+3. Run `./scripts/prepare-public-release.sh` to build the clean public tree, then push it and tag `v1.1` (the script prints the exact commands).
+4. Re-point this repo's `origin` at the GitHub URL so `ism-mcp install` emits a reachable source.
+
+After that, sub-project C is the only remaining roadmap item. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it.
 
 **Sub-project C: Graph and curated cuts.** `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. A query-side extension that reuses B's embeddings for the "semantically similar" neighbours. Needs a brainstorm cycle before a plan is written.
 
@@ -121,7 +135,7 @@ Deferred (revisit when consumers ask): revision diff, HTTP/SSE transport, PyPI p
 - **No incremental updates.** Each ingest drops and rebuilds the database.
 - **Single-revision database.** No history across ISM revisions. Defer to plan #3.
 - **No auth on the MCP server.** Local stdio only.
-- **uvx and docker install modes fetch from a git remote.** `origin` now points at a local bare repo at `file:///home/dudley/code/ism-mcp.git`, which `ism-mcp install` auto-detects. This works for deployments on this machine. It is not reachable by teammates on other machines, so a team-reachable host (GitHub or private) is still pending before the emitted configs work off-machine.
+- **uvx and docker install modes fetch from a git remote.** Re-point `origin` to the public GitHub repo `https://github.com/samueldudley/ism-mcp.git` before generating consumer configs, so the emitted `uvx --from git+...` entry resolves on other machines. `ism-mcp install` auto-detects `origin`.
 
 ## Conventions
 
@@ -139,8 +153,8 @@ See `CLAUDE.md` for the canonical list. Highlights:
 1. Read this file (you're here).
 2. Read `CLAUDE.md` for working conventions.
 3. Run the verification block in the "Verifying current state" section above.
-4. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm sub-project C.
+4. Follow "Next action" to land v1.1 and publish, then brainstorm sub-project C from `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md`.
 
-Branch state: `main` is the active branch and up to date. `feature/consumer-install-helper`, `feature/hardening-and-tests`, `feature/hybrid-discovery`, `feature/coverage-manifest`, and `feature/audit-fixes` were fast-forward merged and deleted. No active feature branch. `origin` points at a local bare repo at `file:///home/dudley/code/ism-mcp.git` (see known limitations).
+Branch state: `feature/public-v1.1-polish` holds the v1.1 polish and is pending merge to `main`. Earlier feature branches (`consumer-install-helper`, `hardening-and-tests`, `hybrid-discovery`, `coverage-manifest`, `audit-fixes`) were fast-forward merged and deleted. `origin` becomes the public GitHub repo on release (see known limitations).
 
 Recent post-audit fix: `store.search` now sanitises free-text into quoted FTS5 phrases, so `ism_search` and `ism_applicable` no longer raise on metacharacters (colons, Windows paths, bare boolean operators). See `store.sanitise_fts_query`.

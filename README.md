@@ -1,19 +1,22 @@
 # ism-mcp
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/samueldudley/ism-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/samueldudley/ism-mcp/actions/workflows/ci.yml)
+
 Agent-friendly query layer over the ASD Information Security Manual, served via MCP.
 
 The ISM PDF is ~700 pages and does not fit in a model context window. This MCP server parses the official Cloud Controls Matrix XLSX into a local SQLite database, attaches surrounding-paragraph excerpts from the ISM PDF, and exposes a small set of typed lookup tools so that an agent (Claude Code, Codex, Cursor, etc.) can interrogate the ISM without re-reading the source documents.
 
 ## Status
 
-Prototype. Single-tenant local SQLite, stdio-transport MCP server, no auth.
+Single-tenant and local: SQLite storage, stdio-transport MCP server, no auth, no network listener. Suitable for local and per-project use, not multi-tenant or networked deployment.
 
 ## Install
 
 Requires `uv` and Python 3.14+.
 
 ```bash
-git clone <repo-url> ism-mcp
+git clone https://github.com/samueldudley/ism-mcp.git
 cd ism-mcp
 uv sync
 ```
@@ -34,7 +37,9 @@ uv run ism-mcp ingest \
     --revision 2026-03
 ```
 
-The database lands at `~/.local/share/ism-mcp/ism.db` by default. Override with `--db PATH`.
+The database lands at `~/.local/share/ism-mcp/ism.db` by default. Override with `--db PATH`. Run `ism-mcp ingest --help` for the full flag list.
+
+The first ingest downloads the embedding model once (see [First-run network requirement](#first-run-network-requirement)). Pass `--no-embeddings` to skip it and fall back to lexical-only ranking.
 
 Re-run with a new XLSX / PDF on each quarterly revision. The ingester drops and recreates the schema, so there is no migration to worry about.
 
@@ -78,12 +83,12 @@ The database path uses Claude Code's `${CLAUDE_PROJECT_DIR:-.}` expansion, so it
 
 Use `--dry-run` to see the planned writes without changing anything.
 
-### Prerequisite: publish the server
+### Fetching from the published remote
 
-`uvx` and `docker` both fetch a pinned source, so ism-mcp must reach a git remote before any teammate can run it. Push this repo to a remote and set `origin`. Then migrate your own user-scope registration to the same launch command:
+`uvx` and `docker` both fetch a pinned source. `ism-mcp install` defaults `--repo` to this checkout's `origin`, so point `origin` at the published repository (`https://github.com/samueldudley/ism-mcp.git`) before generating consumer configs. To register the server at user scope against the published source:
 
 ```bash
-claude mcp add ism -s user -- uvx --from git+<origin>@<rev> ism-mcp serve
+claude mcp add ism -s user -- uvx --from git+https://github.com/samueldudley/ism-mcp.git@v1.1 ism-mcp serve
 ```
 
 The user-scope server keeps the default database at `~/.local/share/ism-mcp/ism.db`, which you ingest locally. It carries no `ISM_MCP_DB` override, since that path is only for project installs where the database travels with the repo.
@@ -234,8 +239,10 @@ ism-mcp/
     classification.py classification + maturity input normalisation
     paths.py          repo-path token expansion for query enrichment
     coverage.py       coverage manifest read, validate, serialise, gaps
+    install.py        consumer-repo install writer
     server.py         FastMCP server: lookup, discovery, coverage tools, JSON responses
-    __main__.py       CLI: `ingest` and `serve` subcommands
+    __main__.py       CLI: ingest, serve, and install subcommands
+    data/             path keyword map + coverage template
   pyproject.toml uv-managed, hatchling build
 ```
 
@@ -249,4 +256,6 @@ Single SQLite file. One table for controls plus an FTS5 virtual table kept in sy
 
 ## Licence
 
-TBD.
+MIT. See [LICENSE](LICENSE).
+
+This licence covers the code in this repository. The ISM itself is Commonwealth of Australia content published by the ACSC under its own terms. You download and ingest the ISM separately; it is not redistributed here.
