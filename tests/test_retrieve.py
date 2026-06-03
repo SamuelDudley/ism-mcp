@@ -65,3 +65,11 @@ def test_rrf_normalised_score_is_in_unit_range():
 def test_rrf_empty_inputs_returns_empty():
     assert rrf([], k=60) == []
     assert rrf([[]], k=60) == []
+
+
+def test_vector_index_non_positive_top_k_returns_empty():
+    matrix = np.array([[1.0], [0.5]], dtype=np.float32)
+    idx = VectorIndex(matrix, [1, 2])
+    query = np.array([1.0], dtype=np.float32)
+    assert idx.search(query, top_k=0) == []
+    assert idx.search(query, top_k=-1) == []

@@ -20,10 +20,10 @@ class VectorIndex:
         return len(self._ids)
 
     def search(self, query: np.ndarray, top_k: int) -> list[tuple[int, float]]:
-        if self._matrix.shape[0] == 0:
+        k = max(0, min(top_k, self._matrix.shape[0]))
+        if k == 0:
             return []
         scores = self._matrix @ query
-        k = min(top_k, scores.shape[0])
         order = np.argpartition(-scores, k - 1)[:k]
         order = order[np.argsort(-scores[order])]
         return [(self._ids[int(i)], float(scores[int(i)])) for i in order]

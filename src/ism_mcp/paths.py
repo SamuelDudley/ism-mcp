@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Iterable
 from functools import cache
 from importlib.resources import files
 
@@ -36,3 +37,9 @@ def expand_paths(paths: list[str]) -> tuple[set[str], set[str]]:
                 matched.add(token)
                 expanded.update(keywords[token])
     return expanded, matched
+
+
+def token_keywords(tokens: Iterable[str]) -> dict[str, set[str]]:
+    """Map each known token to the keyword set it expands to."""
+    keywords = _keyword_map()
+    return {t: keywords[t] for t in tokens if t in keywords}

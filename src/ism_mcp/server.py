@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import re
+import sqlite3
 from datetime import date as _date
 from pathlib import Path
 
@@ -16,6 +19,8 @@ from .embed import DeterministicHashEmbedder, Embedder, FastEmbedEmbedder
 
 DEFAULT_DB = Path(os.environ.get("ISM_MCP_DB", Path.home() / ".local/share/ism-mcp/ism.db"))
 
+MAX_LIMIT = 200
+
 
 mcp = FastMCP("ism-mcp")
 
@@ -24,7 +29,20 @@ _RUNTIME: dict[str, object] = {}
 
 
 def _reset_runtime_cache() -> None:
+    conn = _RUNTIME.get("conn")
+    if conn is not None:
+        with contextlib.suppress(Exception):
+            conn.close()  # type: ignore[attr-defined]
     _RUNTIME.clear()
+
+
+def _active_db() -> Path:
+    """Resolve the database path at call time so a runtime ISM_MCP_DB takes effect."""
+    return Path(os.environ.get("ISM_MCP_DB", str(DEFAULT_DB)))
+
+
+def _clamp_limit(limit: int) -> int:
+    return max(1, min(int(limit), MAX_LIMIT))
 
 
 def _embedder() -> Embedder | None:
@@ -52,13 +70,20 @@ def _vector_index(conn) -> retrieve.VectorIndex | None:
     return idx
 
 
-def _conn():
-    if not DEFAULT_DB.exists():
+def _conn() -> sqlite3.Connection:
+    path = _active_db()
+    if not path.exists():
         raise RuntimeError(
-            f"ISM database not found at {DEFAULT_DB}. "
+            f"ISM database not found at {path}. "
             "Run `ism-mcp ingest --xlsx PATH [--pdf PATH]` first."
         )
-    return store.open_db(DEFAULT_DB)
+    cached = _RUNTIME.get("conn")
+    if cached is not None and _RUNTIME.get("conn_path") == path:
+        return cached  # type: ignore[return-value]
+    conn = store.open_db(path)
+    _RUNTIME["conn"] = conn
+    _RUNTIME["conn_path"] = path
+    return conn
 
 
 @mcp.tool()
@@ -75,7 +100,7 @@ def ism_get(identifier: str) -> str:
 def ism_search(query: str, limit: int = 10) -> str:
     """Full-text search over ISM control descriptions and topics. Returns up to `limit` matches ranked by relevance."""
     conn = _conn()
-    results = store.search(conn, query, limit=limit)
+    results = store.search(conn, query, limit=_clamp_limit(limit))
     return json.dumps(
         {"query": query, "count": len(results), "results": [c.as_dict() for c in results]},
         indent=2,
@@ -129,7 +154,7 @@ def ism_stats() -> str:
             "ism_revision": store.get_meta(conn, "ism_revision"),
             "xlsx_source": store.get_meta(conn, "xlsx_source"),
             "pdf_source": store.get_meta(conn, "pdf_source"),
-            "db_path": str(DEFAULT_DB),
+            "db_path": str(_active_db()),
         },
         indent=2,
     )
@@ -224,9 +249,12 @@ def ism_applicable(
     fused = retrieve.rrf([lex_ranking, sem_ranking] if semantic_used else [lex_ranking], k=60)
     candidates_before_filter = len(fused)
 
-    matches = _materialise(conn, fused, lex_results, matched_path_tokens, semantic_used)
+    lex_ids = {rid for rid, _ in lex_ranking}
+    sem_ids = {rid for rid, _ in sem_ranking}
+    path_keywords = repo_paths.token_keywords(matched_path_tokens)
+    matches = _materialise(conn, fused, lex_ids, sem_ids, path_keywords, semantic_used)
     matches = _apply_filters(matches, norm_classification, norm_maturity, tags)
-    matches = matches[:limit]
+    matches = matches[: _clamp_limit(limit)]
 
     response: dict = {
         "query": work,
@@ -253,27 +281,33 @@ def _rowid_for(conn, identifier: str) -> int:
     return int(row["rowid"]) if row else -1
 
 
+_WORD_RE = re.compile(r"\w+")
+_TEXT_FIELDS = ("description", "topic", "section", "guideline")
+
+
 def _materialise(
     conn,
     fused: list[tuple[int, float]],
-    lex_results: list,
-    matched_path_tokens: set[str],
+    lex_ids: set[int],
+    sem_ids: set[int],
+    path_keywords: dict[str, set[str]],
     semantic_used: bool,
 ) -> list[dict]:
-    lex_ids = {_rowid_for(conn, c.identifier) for c in lex_results}
-    sem_ids_in_top = {rid for rid, _ in fused} - lex_ids if semantic_used else set()
     out: list[dict] = []
     for rowid, score in fused:
         row = conn.execute("SELECT * FROM controls WHERE rowid = ?", (rowid,)).fetchone()
         if row is None:
             continue
         why: list[str] = []
-        if semantic_used and rowid in sem_ids_in_top | lex_ids:
+        if semantic_used and rowid in sem_ids:
             why.append("semantic")
         if rowid in lex_ids:
             why.append("lexical")
-        for token in sorted(matched_path_tokens):
-            why.append(f"path:{token}")
+        if path_keywords:
+            words = {w for f in _TEXT_FIELDS for w in _WORD_RE.findall(str(row[f]).lower())}
+            for token in sorted(path_keywords):
+                if path_keywords[token] & words:
+                    why.append(f"path:{token}")
         out.append({"row": row, "score": float(score), "why": why})
     return out
 
@@ -483,6 +517,7 @@ def ism_coverage_upsert(
         return json.dumps({"error": str(e)})
 
     manifest = coverage.read_manifest(path)
+    result["warnings"].extend(manifest.warnings)
     if not _is_in_scope(manifest.scope, control):
         result["warnings"].append(f"{identifier}: identifier is outside declared scope")
 
@@ -537,7 +572,9 @@ def ism_coverage_gaps(
             return json.dumps({"error": f"ism_applicable: {raw['error']}"})
         applicable = raw.get("results") or []
 
-    result = coverage.compute_gaps(manifest, in_scope, applicable=applicable, limit=limit)
+    result = coverage.compute_gaps(
+        manifest, in_scope, applicable=applicable, limit=_clamp_limit(limit)
+    )
     return json.dumps(
         {
             "scope": manifest.scope,
