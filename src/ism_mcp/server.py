@@ -480,6 +480,7 @@ def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) ->
             "status": entry.status,
             "how_met": entry.how_met,
             "last_reviewed": entry.last_reviewed.isoformat(),
+            "reviewed_against": entry.reviewed_against,
             "reviewed_by": entry.reviewed_by,
             "next_review": entry.next_review.isoformat() if entry.next_review else None,
             "files": entry.files,
@@ -561,6 +562,7 @@ def ism_coverage_upsert(
     last_reviewed: str | None = None,
     reviewed_by: str | None = None,
     next_review: str | None = None,
+    reviewed_against: str | None = None,
     files: list[str] | None = None,
     commits: list[str] | None = None,
     urls: list[dict] | None = None,
@@ -603,6 +605,7 @@ def ism_coverage_upsert(
         last_reviewed=last_reviewed_date,
         reviewed_by=reviewed_by,
         next_review=next_review_date,
+        reviewed_against=reviewed_against or store.get_active_version(conn),
         files=list(files or []),
         commits=list(commits or []),
         urls=list(urls or []),
@@ -683,6 +686,62 @@ def ism_coverage_gaps(
         },
         indent=2,
     )
+
+
+@mcp.tool()
+def ism_coverage_impact(
+    project_path: str | None = None,
+    target_version: str | None = None,
+    limit: int = 50,
+) -> str:
+    """Report what a newer ISM version means for the project's coverage.
+
+    Buckets covered/partial entries into re_review (control changed since it was assessed),
+    removed_upstream (control gone at target), and new_uncovered (now in scope, no entry).
+    `target_version` defaults to scope.baseline_version or the active version.
+    """
+    path, err = _find_manifest_or_error(project_path)
+    if err is not None:
+        return json.dumps(err)
+    assert path is not None
+    try:
+        manifest = coverage.read_manifest(path)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    conn = _conn()
+    target = (
+        target_version or manifest.scope.get("baseline_version") or store.get_active_version(conn)
+    )
+    if target is None or store.get_version(conn, target) is None:
+        return json.dumps(
+            {"error": f"no such target version: {target}", "hint": "call ism_versions"}
+        )
+
+    try:
+        in_scope_target = store.list_in_scope(
+            conn,
+            classification=manifest.scope.get("classification"),
+            maturity=manifest.scope.get("maturity"),
+            sections=manifest.scope.get("sections"),
+            version=target,
+        )
+    except ValueError as e:
+        return json.dumps({"error": f"scope: {e}"})
+
+    def lookup(version: str, identifier: str):
+        return store.get_control(conn, identifier, version=version)
+
+    result = coverage.compute_impact(
+        manifest=manifest,
+        target_version=target,
+        lookup=lookup,
+        in_scope_target=in_scope_target,
+        changed_fields=diff.changed_fields,
+        diff_text=diff.unified_diff,
+        limit=_clamp_limit(limit),
+    )
+    return json.dumps({"manifest_path": str(path), **result}, indent=2)
 
 
 def run() -> None:
