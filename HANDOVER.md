@@ -92,12 +92,13 @@ A real Dec-2025 to Mar-2026 diff via `server.ism_diff()` reports roughly: 27 add
 
 ## Next action
 
-The XLSX-based v1.1 public release was never cut; the OSCAL migration supersedes it. The next step is to cut the first OSCAL-based public release.
+`pyproject` is at `2.0.0` (major bump: the OSCAL migration changed the identifier scheme and ingest CLI). Tag `v2.0` is cut on the private `origin` file remote (`git+file:///home/dudley/code/ism-mcp.git@v2.0`) and is what local consumers (e.g. wayland-remote) pin to. The XLSX-based v1.1 public release was never cut.
 
-1. Decide the version bump in `pyproject.toml` (currently `1.1.0`). The identifier scheme and ingest CLI changed, so a minor bump to `1.2.0` is the natural choice.
-2. Build the public DB: `uv run ism-mcp ingest-history --oscal-repo /home/dudley/code/ism-oscal` (with embeddings on the active version), then run `./scripts/prepare-public-release.sh`.
-3. Publish the public GitHub repo `samueldudley/ism-mcp` and tag the release (the script prints the exact commands). This dev repo stays private.
-4. Re-generate consumer configs with `ism-mcp install --repo https://github.com/samueldudley/ism-mcp.git --rev <tag>`.
+The remaining step is to cut the first OSCAL-based **public** release:
+
+1. Build the public DB: `uv run ism-mcp ingest-history --oscal-repo /home/dudley/code/ism-oscal` (with embeddings on the active version), then run `./scripts/prepare-public-release.sh`.
+2. Publish the public GitHub repo `samueldudley/ism-mcp` and tag `v2.0` (the script prints the exact commands). This dev repo stays private.
+3. Re-generate consumer configs with `ism-mcp install --repo https://github.com/samueldudley/ism-mcp.git --rev v2.0`.
 
 After that, sub-project C (Graph and curated cuts) remains. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it. Note that `ism_diff`/`ism_history` already cover part of the "history" intent; the `--embed-all` history embeddings would let `ism_neighbors` work across versions.
 

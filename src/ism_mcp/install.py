@@ -61,8 +61,12 @@ Consult it when the work touches Australian Government security, ASD or ACSC gui
 the Essential Eight, or classifications (OFFICIAL, OFFICIAL:Sensitive, PROTECTED, SECRET,
 TOP_SECRET), and during security review, threat modelling, or compliance writing.
 
+Reach for `ism_applicable` first with a natural-language description of the work, then
+surface the relevant controls before recommending mitigations.
+
 - `ism_applicable(work, ...)` finds controls relevant to what you are doing.
-- `ism_get(identifier)` returns the full text of one control.
+- `ism_get(identifier)` returns the full text of one control. Identifiers are OSCAL ids
+  like `ism-1781`; lookups also accept `ISM-1781`, a bare number, or a label.
 
 The database holds the full ISM release history. When a newer ISM lands:
 
