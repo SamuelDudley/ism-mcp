@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# uv
+.uv-cache/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# Agent working dirs
+.claude/
+
+# Build outputs
+build/
+dist/
+
+# Local data: the SQLite database is never committed here. The consumer-install
+# workflow intentionally commits .ism/ism.db in the target repo, not this one.
+*.db
+*.db-journal
+*.db-wal
+.ism/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

@@ -1,0 +1,97 @@
+{
+  "catalog": {
+    "uuid": "fixture-catalog",
+    "metadata": {
+      "title": "Information security manual",
+      "published": "2025-12-09T07:27:00.000000Z",
+      "last-modified": "2025-12-09T07:27:00.000000Z",
+      "version": "2025.12.9",
+      "oscal-version": "1.1.2"
+    },
+    "groups": [
+      {
+        "id": "g-roles",
+        "title": "Guidelines for cyber security roles",
+        "groups": [
+          {
+            "id": "g-roles-ciso",
+            "title": "Chief information security officer",
+            "groups": [
+              {
+                "id": "g-roles-ciso-lead",
+                "title": "Providing cyber security leadership",
+                "controls": [
+                  {
+                    "id": "ism-0714",
+                    "class": "ISM-control",
+                    "title": "Control: ism-0714",
+                    "props": [
+                      {"name": "sort-id", "value": "catalog[1].group[03].group[1].group[1].control[1]"},
+                      {"name": "revision", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "3"},
+                      {"name": "updated", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "Dec-25"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "NC"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "OS"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "P"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "S"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "TS"}
+                    ],
+                    "parts": [
+                      {"id": "ism-0714_smt", "name": "statement", "prose": "A chief information security officer provides cyber security leadership."}
+                    ]
+                  },
+                  {
+                    "id": "ism-1997",
+                    "class": "ISM-control",
+                    "title": "Control: ism-1997",
+                    "props": [
+                      {"name": "sort-id", "value": "catalog[1].group[03].group[1].group[1].control[2]"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "TS"}
+                    ],
+                    "parts": [
+                      {"id": "ism-1997_smt", "name": "statement", "prose": "Clear roles and responsibilities for cyber security are defined."}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "g-prin",
+        "title": "Cyber security principles",
+        "groups": [
+          {
+            "id": "g-prin-the",
+            "title": "The cyber security principles",
+            "groups": [
+              {
+                "id": "g-prin-gov",
+                "title": "Govern cyber security principles",
+                "controls": [
+                  {
+                    "id": "ism-principle-gov-01",
+                    "class": "ISM-principle",
+                    "title": "Executive cyber security accountability",
+                    "props": [
+                      {"name": "sort-id", "value": "catalog[1].group[02].group[1].group[1].control[01]"},
+                      {"name": "label", "value": "GOV-01"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "NC"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "OS"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "P"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "S"},
+                      {"name": "applicability", "ns": "https://cyber.gov.au/ns/ism/oscal/3.0", "value": "TS"}
+                    ],
+                    "parts": [
+                      {"id": "ism-principle-gov-01_smt", "name": "statement", "prose": "The board of directors or executive committee is accountable for cyber security."}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
