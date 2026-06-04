@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/samueldudley/ism-mcp"
 PUSH_URL="git@github.com:samueldudley/ism-mcp.git"
-TAG="v2.0"
+TAG="v2.0.1"
 
 cd "$(git rev-parse --show-toplevel)"
 OUT="${1:-dist/public}"
