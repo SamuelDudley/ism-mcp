@@ -113,6 +113,8 @@ The CI script is the source of truth for what counts as a passing build. Run it 
 
 ## MCP tools
 
+The table lists the bare tool names. Claude Code invokes them under the server key prefix, so `ism_applicable` is called as `mcp__ism__ism_applicable` (replace `ism` if you installed under a different `--name`).
+
 | Tool | Purpose |
 |---|---|
 | `ism_applicable(work, classification?, maturity?, tags?, paths?, limit?, verbose?, version?)` | Hybrid retrieval: rank controls relevant to a free-text description of planned or current work. Recommended default for discovery. |

@@ -51,3 +51,18 @@ def test_claude_md_block_names_the_key_tools():
     assert "ism_applicable" in block
     assert "ism_coverage_gaps" in block
     assert ".ism-coverage.toml" in block
+
+
+def test_claude_md_block_uses_invocation_prefix():
+    block = install.claude_md_block()
+    # Tool names must carry the mcp__<name>__ prefix Claude Code invokes them by.
+    assert "mcp__ism__ism_applicable" in block
+    assert "mcp__ism__ism_coverage_impact" in block
+    # A bare, unprefixed tool bullet would not be callable.
+    assert "- `ism_applicable(" not in block
+
+
+def test_claude_md_block_honours_server_name():
+    block = install.claude_md_block(name=" sm_custom".strip())
+    assert "mcp__sm_custom__ism_applicable" in block
+    assert "mcp__ism__" not in block

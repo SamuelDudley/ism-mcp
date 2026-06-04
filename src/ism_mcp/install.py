@@ -50,36 +50,42 @@ def mcp_entry(
     raise ValueError(f"unknown mode: {mode}")
 
 
-def claude_md_block() -> str:
-    """Return the managed CLAUDE.md guidance block, markers included."""
+def claude_md_block(name: str = "ism") -> str:
+    """Return the managed CLAUDE.md guidance block, markers included.
+
+    Tool names carry the `mcp__<name>__` prefix Claude Code uses to invoke them, where
+    `name` is the configured server key.
+    """
+    p = f"mcp__{name}__"
     return f"""{MARKER_BEGIN}
 ## ISM controls (ism-mcp)
 
-This repo has the ASD Information Security Manual available through the `ism` MCP server.
+This repo has the ASD Information Security Manual available through the `{name}` MCP server.
+Its tools are invoked with the `{p}` prefix, e.g. `{p}ism_applicable`.
 
 Consult it when the work touches Australian Government security, ASD or ACSC guidance,
 the Essential Eight, or classifications (OFFICIAL, OFFICIAL:Sensitive, PROTECTED, SECRET,
 TOP_SECRET), and during security review, threat modelling, or compliance writing.
 
-Reach for `ism_applicable` first with a natural-language description of the work, then
+Reach for `{p}ism_applicable` first with a natural-language description of the work, then
 surface the relevant controls before recommending mitigations.
 
-- `ism_applicable(work, ...)` finds controls relevant to what you are doing.
-- `ism_get(identifier)` returns the full text of one control. Identifiers are OSCAL ids
+- `{p}ism_applicable(work, ...)` finds controls relevant to what you are doing.
+- `{p}ism_get(identifier)` returns the full text of one control. Identifiers are OSCAL ids
   like `ism-1781`; lookups also accept `ISM-1781`, a bare number, or a label.
 
 The database holds the full ISM release history. When a newer ISM lands:
 
-- `ism_versions()` lists the loaded releases.
-- `ism_diff()` shows what changed in the latest release (added, removed, reworded, moved).
-- `ism_history(identifier)` shows one control's evolution over time.
+- `{p}ism_versions()` lists the loaded releases.
+- `{p}ism_diff()` shows what changed in the latest release (added, removed, reworded, moved).
+- `{p}ism_history(identifier)` shows one control's evolution over time.
 
 Track coverage in `.ism-coverage.toml`:
 
-- `ism_coverage_read()` shows what is recorded.
-- `ism_coverage_gaps(work)` lists in-scope controls not yet addressed.
-- `ism_coverage_upsert(...)` records how a control is met, with evidence.
-- `ism_coverage_impact()` flags covered controls to re-review after an ISM update.
+- `{p}ism_coverage_read()` shows what is recorded.
+- `{p}ism_coverage_gaps(work)` lists in-scope controls not yet addressed.
+- `{p}ism_coverage_upsert(...)` records how a control is met, with evidence.
+- `{p}ism_coverage_impact()` flags covered controls to re-review after an ISM update.
 {MARKER_END}
 """
 
@@ -167,7 +173,7 @@ def install(
         )
     return [
         merge_mcp_json(project / ".mcp.json", name, entry, dry_run=dry_run),
-        write_managed_block(project / "CLAUDE.md", claude_md_block(), dry_run=dry_run),
+        write_managed_block(project / "CLAUDE.md", claude_md_block(name), dry_run=dry_run),
         scaffold_manifest(project / ".ism-coverage.toml", _manifest_template(), dry_run=dry_run),
         copy_database(db_src, project / DB_REPO_PATH, dry_run=dry_run),
     ]
