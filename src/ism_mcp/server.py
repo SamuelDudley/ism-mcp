@@ -90,20 +90,23 @@ def _conn() -> sqlite3.Connection:
 
 
 @mcp.tool()
-def ism_get(identifier: str) -> str:
-    """Get the full record for one ISM control by its identifier (e.g. `ISM-1781`)."""
+def ism_get(identifier: str, version: str | None = None) -> str:
+    """Get the full record for one ISM control by identifier (e.g. `ism-1781`).
+
+    Defaults to the active ISM version. Pass `version` (see ism_versions) for a historical one.
+    """
     conn = _conn()
-    c = store.get_control(conn, identifier)
+    c = store.get_control(conn, identifier, version=version)
     if c is None:
         return json.dumps({"error": f"no such control: {identifier}"})
     return json.dumps(c.as_dict(), indent=2)
 
 
 @mcp.tool()
-def ism_search(query: str, limit: int = 10) -> str:
-    """Full-text search over ISM control descriptions and topics. Returns up to `limit` matches ranked by relevance."""
+def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
+    """Full-text search over ISM control text and topics. Defaults to the active version."""
     conn = _conn()
-    results = store.search(conn, query, limit=_clamp_limit(limit))
+    results = store.search(conn, query, limit=_clamp_limit(limit), version=version)
     return json.dumps(
         {"query": query, "count": len(results), "results": [c.as_dict() for c in results]},
         indent=2,
@@ -111,11 +114,11 @@ def ism_search(query: str, limit: int = 10) -> str:
 
 
 @mcp.tool()
-def ism_list_by_classification(classification: str) -> str:
+def ism_list_by_classification(classification: str, version: str | None = None) -> str:
     """List controls that apply at a given classification level. Allowed values: NC, OS, P, S, TS."""
     conn = _conn()
     try:
-        results = store.list_by_classification(conn, classification)
+        results = store.list_by_classification(conn, classification, version=version)
     except ValueError as e:
         return json.dumps({"error": str(e)})
     return json.dumps(
@@ -129,18 +132,18 @@ def ism_list_by_classification(classification: str) -> str:
 
 
 @mcp.tool()
-def ism_list_topics() -> str:
+def ism_list_topics(version: str | None = None) -> str:
     """List all distinct topic strings present in the ISM."""
     conn = _conn()
-    topics = store.list_topics(conn)
+    topics = store.list_topics(conn, version=version)
     return json.dumps({"count": len(topics), "topics": topics}, indent=2)
 
 
 @mcp.tool()
-def ism_list_by_topic(topic: str) -> str:
+def ism_list_by_topic(topic: str, version: str | None = None) -> str:
     """List controls under a specific topic (exact match, use `ism_list_topics` to enumerate)."""
     conn = _conn()
-    results = store.list_by_topic(conn, topic)
+    results = store.list_by_topic(conn, topic, version=version)
     return json.dumps(
         {"topic": topic, "count": len(results), "identifiers": [c.identifier for c in results]},
         indent=2,
@@ -149,14 +152,17 @@ def ism_list_by_topic(topic: str) -> str:
 
 @mcp.tool()
 def ism_stats() -> str:
-    """Report database statistics: total controls, ISM revision metadata, source paths."""
+    """Report database statistics: active version, total versions, and control count."""
     conn = _conn()
+    active = store.get_active_version(conn)
+    row = store.get_version(conn, active) if active else None
     return json.dumps(
         {
-            "controls": store.count_controls(conn),
-            "ism_revision": store.get_meta(conn, "ism_revision"),
-            "xlsx_source": store.get_meta(conn, "xlsx_source"),
-            "pdf_source": store.get_meta(conn, "pdf_source"),
+            "active_version": active,
+            "versions": len(store.list_versions(conn)),
+            "controls": store.count_controls(conn) if active else 0,
+            "oscal_version": row["oscal_version"] if row else None,
+            "git_tag": row["git_tag"] if row else None,
             "db_path": str(_active_db()),
         },
         indent=2,
@@ -164,10 +170,36 @@ def ism_stats() -> str:
 
 
 @mcp.tool()
-def ism_list_sections() -> str:
+def ism_versions() -> str:
+    """List loaded ISM versions, newest first. The vocabulary for version/from/to arguments."""
+    conn = _conn()
+    active = store.get_active_version(conn)
+    versions = store.list_versions(conn)
+    return json.dumps(
+        {
+            "active": active,
+            "count": len(versions),
+            "versions": [
+                {
+                    "version": v["version"],
+                    "label": v["label"],
+                    "published": v["published"],
+                    "control_count": v["control_count"],
+                    "git_tag": v["git_tag"],
+                    "is_active": v["version"] == active,
+                }
+                for v in versions
+            ],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+def ism_list_sections(version: str | None = None) -> str:
     """List the distinct ISM Section values, the vocabulary for the `tags` filter on `ism_applicable`."""
     conn = _conn()
-    sections = store.list_sections(conn)
+    sections = store.list_sections(conn, version=version)
     return json.dumps({"count": len(sections), "sections": sections}, indent=2)
 
 

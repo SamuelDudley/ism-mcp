@@ -14,6 +14,7 @@ def populated_db(tmp_path, sample_controls, monkeypatch):
     db_path = tmp_path / "ism.db"
     conn = store.open_db(db_path)
     store.insert_controls(conn, sample_controls)
+    store.set_active_version(conn, sample_controls[0].version)
     conn.close()
     monkeypatch.setattr(server, "DEFAULT_DB", db_path)
     monkeypatch.delenv("ISM_MCP_DB", raising=False)
