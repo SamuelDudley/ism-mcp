@@ -35,7 +35,7 @@ The database lands at `~/.local/share/ism-mcp/ism.db` by default. Override with 
 
 The first ingest downloads the embedding model once (see [First-run network requirement](#first-run-network-requirement)). Pass `--no-embeddings` to skip it and fall back to lexical-only ranking. `ingest-history` embeds only the newest release by default (fast); pass `--embed-all` to embed every version.
 
-Versions are upserted independently, so re-ingesting a release replaces just that version. There is no whole-database rebuild on each quarterly release.
+Versions are upserted independently, so re-ingesting a release replaces just that version. There is no whole-database rebuild on each quarterly release. If you are upgrading from an older XLSX-based database, its schema is incompatible: ingest refuses it with a clear error, so pass `--fresh` once to wipe and rebuild.
 
 ## Use as a Claude Code MCP server
 

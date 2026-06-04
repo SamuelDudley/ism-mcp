@@ -127,12 +127,31 @@ class Control:
         }
 
 
+class IncompatibleSchemaError(RuntimeError):
+    pass
+
+
 def open_db(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _verify_schema(conn, path)
     return conn
+
+
+def _verify_schema(conn: sqlite3.Connection, path: Path) -> None:
+    """Reject a pre-existing database written by an older, incompatible schema.
+
+    `CREATE TABLE IF NOT EXISTS` leaves an old-shaped `controls` table untouched, so a
+    missing `version` column means the file predates the version-keyed schema.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(controls)")}
+    if "version" not in cols:
+        raise IncompatibleSchemaError(
+            f"database at {path} uses an incompatible older schema. "
+            "Re-ingest with --fresh to rebuild it, or delete the file."
+        )
 
 
 def reset(conn: sqlite3.Connection) -> None:

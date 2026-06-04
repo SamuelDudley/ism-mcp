@@ -23,8 +23,15 @@ def _embedder_or_none(no_embeddings: bool):
     return FastEmbedEmbedder()
 
 
+def _wipe_if_fresh(db_path: Path, fresh: bool) -> None:
+    if fresh and db_path.exists():
+        db_path.unlink()
+        print(f"removed existing database at {db_path} (--fresh)", file=sys.stderr)
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path = Path(args.db or server.DEFAULT_DB)
+    _wipe_if_fresh(db_path, args.fresh)
     oscal_dir = Path(args.oscal) if args.oscal else fetch.DEFAULT_CACHE
     if args.fetch:
         print("fetching OSCAL mirror...", file=sys.stderr)
@@ -42,6 +49,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 def cmd_ingest_history(args: argparse.Namespace) -> int:
     db_path = Path(args.db or server.DEFAULT_DB)
+    _wipe_if_fresh(db_path, args.fresh)
     repo_dir = Path(args.oscal_repo) if args.oscal_repo else fetch.DEFAULT_CACHE
     if args.fetch or not (repo_dir / ".git").is_dir():
         print("fetching OSCAL mirror...", file=sys.stderr)
@@ -174,6 +182,9 @@ def main(argv: list[str] | None = None) -> int:
     p_ingest.add_argument("--db", help=f"Output database path (default: {server.DEFAULT_DB}).")
     p_ingest.add_argument("--fetch", action="store_true", help="Refresh the managed cache first.")
     p_ingest.add_argument(
+        "--fresh", action="store_true", help="Wipe the database before ingesting."
+    )
+    p_ingest.add_argument(
         "--no-embeddings",
         action="store_true",
         help="skip embedding generation. Server falls back to lexical-only.",
@@ -188,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_hist.add_argument("--to", dest="to_tag", help="Latest tag to include.")
     p_hist.add_argument("--fetch", action="store_true", help="Refresh the managed cache first.")
+    p_hist.add_argument("--fresh", action="store_true", help="Wipe the database before ingesting.")
     p_hist.add_argument(
         "--embed-all", action="store_true", help="Embed every version, not just the newest."
     )
