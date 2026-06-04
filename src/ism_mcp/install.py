@@ -64,11 +64,18 @@ TOP_SECRET), and during security review, threat modelling, or compliance writing
 - `ism_applicable(work, ...)` finds controls relevant to what you are doing.
 - `ism_get(identifier)` returns the full text of one control.
 
+The database holds the full ISM release history. When a newer ISM lands:
+
+- `ism_versions()` lists the loaded releases.
+- `ism_diff()` shows what changed in the latest release (added, removed, reworded, moved).
+- `ism_history(identifier)` shows one control's evolution over time.
+
 Track coverage in `.ism-coverage.toml`:
 
 - `ism_coverage_read()` shows what is recorded.
 - `ism_coverage_gaps(work)` lists in-scope controls not yet addressed.
 - `ism_coverage_upsert(...)` records how a control is met, with evidence.
+- `ism_coverage_impact()` flags covered controls to re-review after an ISM update.
 {MARKER_END}
 """
 

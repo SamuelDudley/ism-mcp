@@ -5,11 +5,11 @@
 
 Agent-friendly query layer over the ASD Information Security Manual, served via MCP.
 
-The ISM PDF is ~700 pages and does not fit in a model context window. This MCP server parses the official Cloud Controls Matrix XLSX into a local SQLite database, attaches surrounding-paragraph excerpts from the ISM PDF, and exposes a small set of typed lookup tools so that an agent (Claude Code, Codex, Cursor, etc.) can interrogate the ISM without re-reading the source documents.
+The ISM is ~700 pages and does not fit in a model context window. This MCP server parses the official ASD OSCAL release of the ISM into a local SQLite database and exposes a small set of typed lookup tools so that an agent (Claude Code, Codex, Cursor, etc.) can interrogate the ISM without re-reading the source documents. It holds the full ISM release history, so it can also report what changed between versions and what a newer ISM means for a project's existing compliance work.
 
 ## Status
 
-Single-tenant and local: SQLite storage, stdio-transport MCP server, no auth, no network listener. Suitable for local and per-project use, not multi-tenant or networked deployment.
+Single-tenant and local: SQLite storage, stdio-transport MCP server, no auth, no network listener. Ingest fetches the OSCAL source over git. Suitable for local and per-project use, not multi-tenant or networked deployment.
 
 ## Install
 
@@ -23,25 +23,19 @@ uv sync
 
 ## Ingest the ISM
 
-Download the latest:
-
-- Cloud controls matrix template (XLSX): https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/ism
-- Information security manual (PDF): same page
-
-Then ingest:
+The source is the official ASD OSCAL mirror, [`AustralianCyberSecurityCentre/ism-oscal`](https://github.com/AustralianCyberSecurityCentre/ism-oscal). `ism-mcp` clones it into a managed cache (`~/.local/share/ism-mcp/oscal`) the first time, so a plain ingest needs no manual download:
 
 ```bash
-uv run ism-mcp ingest \
-    --xlsx "Cloud controls matrix template (March 2026).xlsx" \
-    --pdf  "Information security manual (March 2026).pdf" \
-    --revision 2026-03
+uv run ism-mcp ingest --fetch          # fetch latest, ingest it as the active version
+uv run ism-mcp ingest-history --fetch   # fetch, then ingest every tagged ISM release (full history)
+uv run ism-mcp update                   # fetch latest and ingest any new release
 ```
 
-The database lands at `~/.local/share/ism-mcp/ism.db` by default. Override with `--db PATH`. Run `ism-mcp ingest --help` for the full flag list.
+The database lands at `~/.local/share/ism-mcp/ism.db` by default. Override with `--db PATH`. For an offline or air-gapped environment, clone the OSCAL repo yourself and point at it: `--oscal PATH` (single version) or `--oscal-repo PATH` (history). Run `ism-mcp ingest --help` for the full flag list.
 
-The first ingest downloads the embedding model once (see [First-run network requirement](#first-run-network-requirement)). Pass `--no-embeddings` to skip it and fall back to lexical-only ranking.
+The first ingest downloads the embedding model once (see [First-run network requirement](#first-run-network-requirement)). Pass `--no-embeddings` to skip it and fall back to lexical-only ranking. `ingest-history` embeds only the newest release by default (fast); pass `--embed-all` to embed every version.
 
-Re-run with a new XLSX / PDF on each quarterly revision. The ingester drops and recreates the schema, so there is no migration to worry about.
+Versions are upserted independently, so re-ingesting a release replaces just that version. There is no whole-database rebuild on each quarterly release.
 
 ## Use as a Claude Code MCP server
 
@@ -99,7 +93,7 @@ The user-scope server keeps the default database at `~/.local/share/ism-mcp/ism.
 from ism_mcp import store, server
 
 conn = store.open_db(server.DEFAULT_DB)
-c = store.get_control(conn, "ISM-1781")
+c = store.get_control(conn, "ism-1781")  # also accepts ISM-1781, 1781, or a label
 print(c.description)
 
 for r in store.search(conn, "session timeout", limit=5):
@@ -121,21 +115,25 @@ The CI script is the source of truth for what counts as a passing build. Run it 
 
 | Tool | Purpose |
 |---|---|
-| `ism_applicable(work, classification?, maturity?, tags?, paths?, limit?, verbose?)` | Hybrid retrieval: rank controls relevant to a free-text description of planned or current work. Recommended default for discovery. |
-| `ism_get(identifier)` | Full record for one control by ID. |
-| `ism_search(query, limit=10)` | Deterministic FTS5 search. Use when you know the exact term. |
-| `ism_list_by_classification(classification)` | Controls applicable at NC / OS / P / S / TS. |
-| `ism_list_topics()` | Distinct topic strings. |
-| `ism_list_by_topic(topic)` | Controls under a topic. |
-| `ism_list_sections()` | Distinct section strings. The vocabulary for the `tags` filter on `ism_applicable`. |
+| `ism_applicable(work, classification?, maturity?, tags?, paths?, limit?, verbose?, version?)` | Hybrid retrieval: rank controls relevant to a free-text description of planned or current work. Recommended default for discovery. |
+| `ism_get(identifier, version?)` | Full record for one control by ID. Lookup tolerates `ism-1781`, `ISM-1781`, `1781`, or a label. |
+| `ism_search(query, limit=10, version?)` | Deterministic FTS5 search. Use when you know the exact term. |
+| `ism_list_by_classification(classification, version?)` | Controls applicable at NC / OS / P / S / TS. |
+| `ism_list_topics(version?)` | Distinct topic strings. |
+| `ism_list_by_topic(topic, version?)` | Controls under a topic. |
+| `ism_list_sections(version?)` | Distinct section strings. The vocabulary for the `tags` filter on `ism_applicable`. |
 | `ism_list_classifications()` | Canonical classification enum plus friendly aliases. |
 | `ism_list_maturities()` | Essential Eight maturity levels. |
-| `ism_stats()` | Database statistics. |
+| `ism_versions()` | Loaded ISM releases, newest first. The vocabulary for `version` / `from` / `to` arguments. |
+| `ism_diff(from_version?, to_version?, change_types?)` | Catalog delta between two releases. Defaults to the latest release versus the one before it. |
+| `ism_history(identifier)` | One control's evolution (text, title, applicability, maturity) across every loaded release. |
+| `ism_stats()` | Database statistics: active version, total versions, control count. |
 | `ism_coverage_read(project_path?, status_filter?)` | Read the project's `.ism-coverage.toml` manifest, including scope, summary counts, and curated entries. |
-| `ism_coverage_upsert(identifier, status, how_met, ...)` | Create or update one entry with evidence (files, commits, urls, attachments). Validates against the ISM DB and the project filesystem. |
+| `ism_coverage_upsert(identifier, status, how_met, ...)` | Create or update one entry with evidence (files, commits, urls, attachments). Stamps the entry with the active ISM version. |
 | `ism_coverage_gaps(work?, limit?)` | Return outstanding in-scope controls. With `work`, ranks by `ism_applicable` relevance and intersects with the manifest. |
+| `ism_coverage_impact(project_path?, target_version?, limit?)` | After an ISM update, flag covered controls to re-review, controls removed upstream, and newly in-scope controls with no entry. |
 
-Each `Control` record carries: `identifier`, `guideline`, `section`, `topic`, `revision`, `updated`, `description`, classification applicability (`NC/OS/P/S/TS`), maturity applicability (`ML1/ML2/ML3`), `pdf_excerpt`, `pdf_page`.
+Lookup and listing tools default to the active ISM version. Pass `version` (see `ism_versions`) to target a historical release. Each `Control` record carries: `version`, `identifier`, `label`, `title`, `control_class`, `guideline`, `section`, `topic`, `description`, `control_revision`, `updated`, `sort_id`, classification applicability (`NC/OS/P/S/TS`), and maturity applicability (`ML1/ML2/ML3`).
 
 ## Discovery for agents
 
@@ -150,9 +148,9 @@ ism_applicable(
 )
 ```
 
-Returns a ranked list with `identifier`, `topic`, `section`, `description`, `applies`, `maturity`, a normalised RRF `score` in `[0.0, 1.0]`, and a `why` list naming the signals that surfaced each result (`semantic`, `lexical`, `path:<token>`). `verbose=true` adds the PDF excerpt.
+Returns a ranked list with `identifier`, `label`, `title`, `topic`, `section`, `description`, `applies`, `maturity`, a normalised RRF `score` in `[0.0, 1.0]`, and a `why` list naming the signals that surfaced each result (`semantic`, `lexical`, `path:<token>`). `verbose=true` adds the `guideline`.
 
-> **Maturity is Essential Eight only.** `ML1/ML2/ML3` exist for the ~126 of 1081 controls mapped to the Essential Eight Maturity Model, not the wider ISM. Passing `maturity=` (here, or in a manifest `[scope]`) drops every control with no maturity rating, so a `PROTECTED` scope collapses from ~966 controls to the ~87 that are also Essential Eight ML2. Leave `maturity` unset unless you are specifically tracking Essential Eight maturity.
+> **Maturity is Essential Eight only.** `ML1/ML2/ML3` exist for the ~123 controls mapped to the Essential Eight Maturity Model, not the wider ISM (~1130 controls). Passing `maturity=` (here, or in a manifest `[scope]`) drops every control with no maturity rating, so a `PROTECTED` scope collapses to the subset that is also Essential Eight at that level. Leave `maturity` unset unless you are specifically tracking Essential Eight maturity.
 
 Under the hood: a `bge-small-en-v1.5` embedding of the work text is cosine-matched against per-control embeddings, fused with FTS5 BM25 via Reciprocal Rank Fusion, then post-filtered.
 
@@ -170,7 +168,7 @@ TextEmbedding('BAAI/bge-small-en-v1.5')
 To skip embeddings entirely (offline first run, or for fast iteration during development):
 
 ```bash
-uv run ism-mcp ingest --xlsx PATH --pdf PATH --no-embeddings
+uv run ism-mcp ingest --fetch --no-embeddings
 ```
 
 Without embeddings, `ism_applicable` falls back to lexical-only ranking. Results are still useful but recall on natural-language queries is lower.
@@ -192,26 +190,28 @@ schema_version = 1
 [scope]
 classification = "P"
 sections = ["Authentication hardening", "Cryptographic fundamentals"]
+baseline_version = "2026.03.24"
 
 [project]
 name = "demo-admin"
 
-[controls."ISM-0428"]
+[controls."ism-0428"]
 status = "covered"
 how_met = """
 Sessions terminate after 14 min of idle activity, enforced
 in the auth middleware. Re-auth requires all original factors.
 """
 last_reviewed = 2026-05-28
+reviewed_against = "2026.03.24"
 files = ["src/auth/session.py:42-87"]
 commits = ["abc1234"]
 
-[[controls."ISM-0428".attachments]]
-path = ".ism-coverage/evidence/ISM-0428/lock-prompt.png"
+[[controls."ism-0428".attachments]]
+path = ".ism-coverage/evidence/ism-0428/lock-prompt.png"
 description = "Admin console at 14:01 showing session-expired modal"
 ```
 
-`[scope]` defines the in-scope control set that `ism_coverage_gaps` measures against. Set `classification` (and optionally narrow by `sections`). Do not set `maturity` unless you are tracking Essential Eight maturity specifically: it filters to the Essential Eight subset and drops every other control from scope (see the maturity note under [Discovery for agents](#discovery-for-agents)).
+`[scope]` defines the in-scope control set that `ism_coverage_gaps` measures against. Set `classification` (and optionally narrow by `sections`). `baseline_version` records the ISM release the project currently targets; each entry's `reviewed_against` records the release it was assessed against, and `ism_coverage_impact` uses the two to flag drift when a newer ISM lands. Do not set `maturity` unless you are tracking Essential Eight maturity specifically: it filters to the Essential Eight subset and drops every other control from scope (see the maturity note under [Discovery for agents](#discovery-for-agents)).
 
 Recommended layout for binary evidence:
 
@@ -236,26 +236,27 @@ Reference design: `docs/superpowers/specs/2026-05-28-coverage-manifest-design.md
 ```
 ism-mcp/
   src/ism_mcp/
-    store.py          SQLite schema + queries, FTS5 over description/topic/section/guideline
-    ingest.py         XLSX parser (openpyxl) + PDF paragraph extractor (pdfplumber)
+    store.py          version-keyed SQLite schema + queries, FTS5, version registry
+    oscal.py          parse an OSCAL ISM catalog into version metadata and control rows
+    fetch.py          clone/pull the ACSC ism-oscal mirror, list tags, read files at a tag
+    ingest.py         orchestrate OSCAL ingest over a directory or a git-tag walk
+    diff.py           catalog delta between two versions + per-control history
     retrieve.py       cosine search + Reciprocal Rank Fusion
     embed.py          embedder protocol + fastembed and hash backends
     classification.py classification + maturity input normalisation
     paths.py          repo-path token expansion for query enrichment
-    coverage.py       coverage manifest read, validate, serialise, gaps
+    coverage.py       coverage manifest read, validate, serialise, gaps, drift
     install.py        consumer-repo install writer
-    server.py         FastMCP server: lookup, discovery, coverage tools, JSON responses
-    __main__.py       CLI: ingest, serve, and install subcommands
+    server.py         FastMCP server: lookup, discovery, version, coverage tools
+    __main__.py       CLI: fetch, ingest, ingest-history, update, serve, install
     data/             path keyword map + coverage template
   pyproject.toml uv-managed, hatchling build
 ```
 
-Single SQLite file. One table for controls plus an FTS5 virtual table kept in sync via an `AFTER INSERT` trigger. A `meta` table records the ingested revision and source paths for `ism_stats`.
+Single SQLite file. A `versions` registry plus controls and embeddings keyed by `(version, identifier)`, with an FTS5 virtual table kept in sync via insert and delete triggers. A `meta` table records the active version that lookup tools default to.
 
 ## Known limitations
 
-- **No incremental updates.** Each ingest drops and rebuilds the database.
-- **Single-revision database.** No history across ISM revisions. To diff two revisions, ingest into two database paths and diff externally.
 - **No auth on the MCP server.** Suitable for local use only.
 
 ## Licence

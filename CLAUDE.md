@@ -4,25 +4,28 @@ Read this before doing any work in this repo. Update it when conventions change.
 
 ## What this project is
 
-`ism-mcp` is a local MCP server that exposes the ASD Information Security Manual as queryable tools. It parses the Cloud Controls Matrix XLSX and the ISM PDF into a SQLite database, then serves lookup tools (`ism_get`, `ism_search`, etc.) over stdio. Read `README.md` for install and usage, and `HANDOVER.md` for current state and next planned work.
+`ism-mcp` is a local MCP server that exposes the ASD Information Security Manual as queryable tools. It parses the official OSCAL release of the ISM (from the ACSC `ism-oscal` git mirror) into a version-keyed SQLite database holding the full ISM release history, then serves lookup, version-diff, and coverage tools over stdio. Read `README.md` for install and usage, and `HANDOVER.md` for current state and next planned work.
 
 ## Repository layout
 
 ```
 src/ism_mcp/         the package
   __init__.py
-  __main__.py        CLI: ingest, serve, install
-  store.py           SQLite schema + queries + FTS5
-  ingest.py          XLSX parser + PDF per-control excerpt extractor
+  __main__.py        CLI: fetch, ingest, ingest-history, update, serve, install
+  store.py           version-keyed SQLite schema + queries + FTS5 + version registry
+  oscal.py           parse an OSCAL ISM catalog into version metadata and control rows
+  fetch.py           clone/pull the ACSC ism-oscal mirror, list tags, read files at a tag
+  ingest.py          orchestrate OSCAL ingest over a directory or a git-tag walk
+  diff.py            catalog delta between two versions + per-control history
   retrieve.py        cosine search + Reciprocal Rank Fusion
   embed.py           embedder protocol + fastembed and hash backends
   classification.py  classification + maturity input normalisation
   paths.py           repo-path token expansion for query enrichment
-  coverage.py        coverage manifest read, validate, serialise, gaps
+  coverage.py        coverage manifest read, validate, serialise, gaps, drift
   install.py         consumer-repo install writer
-  server.py          FastMCP server: lookup, discovery, coverage tools
+  server.py          FastMCP server: lookup, discovery, version, coverage tools
   data/              path keyword map + coverage template
-tests/               pytest suite with hermetic fixtures
+tests/               pytest suite with hermetic fixtures (tests/fixtures/oscal mini catalogs)
 docs/plans/              older implementation plans
 docs/superpowers/plans/  implementation plans
 docs/superpowers/specs/  design and vision docs
@@ -36,11 +39,14 @@ README.md            user-facing install and usage
 
 ```bash
 uv sync                      install all deps
-uv run ism-mcp ingest --xlsx PATH [--pdf PATH] [--revision LABEL]
+uv run ism-mcp ingest --fetch            ingest the latest OSCAL release
+uv run ism-mcp ingest-history --fetch    ingest the full tagged ISM history
 uv run ism-mcp serve         start the MCP server over stdio
 uv run pytest                run tests
 ./scripts/ci.sh              full CI suite (fmt, lint, type, test)
 ```
+
+OSCAL source: `https://github.com/AustralianCyberSecurityCentre/ism-oscal` (cloned to `~/.local/share/ism-mcp/oscal`). A local clone is at `/home/dudley/code/ism-oscal` for offline ingest via `--oscal-repo`.
 
 ## Conventions
 
