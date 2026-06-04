@@ -676,7 +676,11 @@ def ism_coverage_gaps(
         applicable = raw.get("results") or []
 
     result = coverage.compute_gaps(
-        manifest, in_scope, applicable=applicable, limit=_clamp_limit(limit)
+        manifest,
+        in_scope,
+        applicable=applicable,
+        limit=_clamp_limit(limit),
+        canonical=lambda i: store.normalise_identifier(conn, i) or i,
     )
     return json.dumps(
         {
@@ -740,6 +744,7 @@ def ism_coverage_impact(
         changed_fields=diff.changed_fields,
         diff_text=diff.unified_diff,
         limit=_clamp_limit(limit),
+        canonical=lambda i: store.normalise_identifier(conn, i) or i,
     )
     return json.dumps({"manifest_path": str(path), **result}, indent=2)
 

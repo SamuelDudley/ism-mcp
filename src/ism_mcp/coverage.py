@@ -287,6 +287,7 @@ def compute_gaps(
     in_scope: list,
     applicable: list[dict] | None = None,
     limit: int = 50,
+    canonical: Callable[[str], str] | None = None,
 ) -> dict:
     """Compute outstanding controls relative to the manifest.
 
@@ -295,17 +296,19 @@ def compute_gaps(
     `applicable` is the optional output of `ism_applicable`: a list of dicts each
     containing at least `identifier`, `score`, `why`. When provided, gaps are
     intersected with this list and ordered by score descending.
+    `canonical` maps a manifest identifier to the store's canonical form so XLSX-era
+    `ISM-NNNN` keys match lowercase `ism-nnnn` in-scope identifiers. Defaults to identity.
     """
-    covered = {
-        ident for ident, e in manifest.controls.items() if e.status in ("covered", "not-applicable")
-    }
+    canon = canonical or (lambda x: x)
+    by_canonical = {canon(ident): e for ident, e in manifest.controls.items()}
+    covered = {ck for ck, e in by_canonical.items() if e.status in ("covered", "not-applicable")}
 
     def _current_status(identifier: str) -> str:
-        entry = manifest.controls.get(identifier)
+        entry = by_canonical.get(identifier)
         return entry.status if entry else "uncurated"
 
     def _current_entry(identifier: str) -> dict | None:
-        entry = manifest.controls.get(identifier)
+        entry = by_canonical.get(identifier)
         if entry is None:
             return None
         return {
@@ -375,13 +378,17 @@ def compute_impact(
     changed_fields: Callable[[Any, Any], list[str]],
     diff_text: Callable[[str, str], str],
     limit: int = 50,
+    canonical: Callable[[str], str] | None = None,
 ) -> dict:
     """Bucket coverage entries by what a move to `target_version` requires.
 
     `lookup(version, identifier)` returns a Control-like object or None.
     `changed_fields(old, new)` and `diff_text(old_text, new_text)` come from diff.py.
     `in_scope_target` is the list of in-scope controls at the target version.
+    `canonical` maps a manifest identifier to the store's canonical form so curated
+    entries match in-scope identifiers. Defaults to identity.
     """
+    canon = canonical or (lambda x: x)
     baseline = manifest.scope.get("baseline_version")
     re_review: list[dict] = []
     removed: list[dict] = []
@@ -418,7 +425,7 @@ def compute_impact(
         else:
             still_valid += 1
 
-    curated = set(manifest.controls)
+    curated = {canon(k) for k in manifest.controls}
     new_uncovered = [
         {
             "identifier": c.identifier,

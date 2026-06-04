@@ -258,3 +258,35 @@ def test_coverage_impact_reports_new_uncovered(project_with_manifest, project_wi
     assert out["target_version"] == V
     assert "summary" in out
     assert "ism-9003" in {e["identifier"] for e in out["new_uncovered"]}
+
+
+UPPER_SEED = """\
+schema_version = 1
+
+[scope]
+classification = "S"
+sections = ["Encryption", "Audit"]
+baseline_version = "2026.03.24"
+
+[controls."ISM-9001"]
+status = "covered"
+how_met = "Network is encrypted."
+last_reviewed = 2026-05-28
+"""
+
+
+def test_gaps_handles_uppercase_manifest_keys(tmp_path, monkeypatch, project_with_ism_db):
+    # XLSX-era manifest keys (ISM-9001) must still register as covered against lowercase ids.
+    (tmp_path / ".ism-coverage.toml").write_text(UPPER_SEED)
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(server.ism_coverage_gaps())
+    ids = [g["identifier"] for g in result["gaps"]]
+    assert "ism-9001" not in ids
+    assert "ism-9003" in ids
+
+
+def test_impact_handles_uppercase_manifest_keys(tmp_path, monkeypatch, project_with_ism_db):
+    (tmp_path / ".ism-coverage.toml").write_text(UPPER_SEED)
+    monkeypatch.chdir(tmp_path)
+    out = json.loads(server.ism_coverage_impact())
+    assert "ism-9001" not in {e["identifier"] for e in out["new_uncovered"]}
