@@ -10,7 +10,7 @@ import numpy as np
 class VectorIndex:
     """Dense matrix of L2-normalised embeddings, brute-force cosine search."""
 
-    def __init__(self, matrix: np.ndarray, ids: list[int]) -> None:
+    def __init__(self, matrix: np.ndarray, ids: list[str]) -> None:
         if matrix.shape[0] != len(ids):
             raise ValueError("matrix rows must match ids length")
         self._matrix = matrix
@@ -19,7 +19,7 @@ class VectorIndex:
     def __len__(self) -> int:
         return len(self._ids)
 
-    def search(self, query: np.ndarray, top_k: int) -> list[tuple[int, float]]:
+    def search(self, query: np.ndarray, top_k: int) -> list[tuple[str, float]]:
         k = max(0, min(top_k, self._matrix.shape[0]))
         if k == 0:
             return []
@@ -30,15 +30,15 @@ class VectorIndex:
 
 
 def rrf(
-    rankings: list[list[tuple[int, float]]],
+    rankings: list[list[tuple[str, float]]],
     k: int = 60,
     normalised: bool = True,
-) -> list[tuple[int, float]]:
-    """Reciprocal Rank Fusion. Returns fused [(rowid, score)] sorted by score desc."""
-    accumulator: dict[int, float] = defaultdict(float)
+) -> list[tuple[str, float]]:
+    """Reciprocal Rank Fusion. Returns fused [(id, score)] sorted by score desc."""
+    accumulator: dict[str, float] = defaultdict(float)
     for ranking in rankings:
-        for rank, (rowid, _score) in enumerate(ranking, start=1):
-            accumulator[rowid] += 1.0 / (k + rank)
+        for rank, (rid, _score) in enumerate(ranking, start=1):
+            accumulator[rid] += 1.0 / (k + rank)
     if not accumulator:
         return []
     if normalised and rankings:
