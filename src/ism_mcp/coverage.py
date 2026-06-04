@@ -6,10 +6,11 @@ import contextlib
 import os
 import tempfile
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 Status = Literal["covered", "partial", "not-applicable", "deferred"]
 
@@ -22,6 +23,7 @@ class ManifestEntry:
     last_reviewed: date
     reviewed_by: str | None = None
     next_review: date | None = None
+    reviewed_against: str | None = None
     files: list[str] = field(default_factory=list)
     commits: list[str] = field(default_factory=list)
     urls: list[dict[str, str]] = field(default_factory=list)
@@ -112,6 +114,7 @@ def _entry_from_dict(identifier: str, body: dict) -> ManifestEntry:
         last_reviewed=last_reviewed,
         reviewed_by=body.get("reviewed_by"),
         next_review=next_review,
+        reviewed_against=body.get("reviewed_against"),
         files=list(body.get("files") or []),
         commits=list(body.get("commits") or []),
         urls=[_as_table(identifier, "url", u) for u in (body.get("urls") or [])],
@@ -182,6 +185,8 @@ def serialise_manifest(manifest: Manifest) -> str:
         lines.append(f"status = {_toml_value(entry.status)}")
         lines.append(f"how_met = {_toml_multiline(entry.how_met)}")
         lines.append(f"last_reviewed = {entry.last_reviewed.isoformat()}")
+        if entry.reviewed_against:
+            lines.append(f"reviewed_against = {_toml_value(entry.reviewed_against)}")
         if entry.reviewed_by:
             lines.append(f"reviewed_by = {_toml_value(entry.reviewed_by)}")
         if entry.next_review:
@@ -360,3 +365,85 @@ def compute_gaps(
         gaps.append(gap)
     total = len(gaps)
     return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
+
+
+def compute_impact(
+    manifest: Manifest,
+    target_version: str,
+    lookup: Callable[[str, str], Any],
+    in_scope_target: list,
+    changed_fields: Callable[[Any, Any], list[str]],
+    diff_text: Callable[[str, str], str],
+    limit: int = 50,
+) -> dict:
+    """Bucket coverage entries by what a move to `target_version` requires.
+
+    `lookup(version, identifier)` returns a Control-like object or None.
+    `changed_fields(old, new)` and `diff_text(old_text, new_text)` come from diff.py.
+    `in_scope_target` is the list of in-scope controls at the target version.
+    """
+    baseline = manifest.scope.get("baseline_version")
+    re_review: list[dict] = []
+    removed: list[dict] = []
+    still_valid = 0
+
+    for ident, entry in manifest.controls.items():
+        if entry.status not in ("covered", "partial"):
+            continue
+        against = entry.reviewed_against or baseline or target_version
+        target = lookup(target_version, ident)
+        if target is None:
+            removed.append(
+                {
+                    "identifier": ident,
+                    "status": entry.status,
+                    "reviewed_against": against,
+                    "hint": f"no longer in {target_version}; consider not-applicable or remove",
+                }
+            )
+            continue
+        old = lookup(against, ident)
+        fields = changed_fields(old, target) if old is not None else []
+        if fields:
+            item = {
+                "identifier": ident,
+                "status": entry.status,
+                "reviewed_against": against,
+                "changes": fields,
+                "how_met": entry.how_met,
+            }
+            if old is not None and "reworded" in fields:
+                item["diff"] = diff_text(old.description, target.description)
+            re_review.append(item)
+        else:
+            still_valid += 1
+
+    curated = set(manifest.controls)
+    new_uncovered = [
+        {
+            "identifier": c.identifier,
+            "label": c.label,
+            "title": c.title,
+            "section": c.section,
+            "reason": "in scope at target, no manifest entry",
+        }
+        for c in in_scope_target
+        if c.identifier not in curated
+    ]
+
+    re_review.sort(key=lambda e: e["identifier"])
+    removed.sort(key=lambda e: e["identifier"])
+    new_uncovered.sort(key=lambda e: e["identifier"])
+    return {
+        "baseline_version": baseline,
+        "target_version": target_version,
+        "summary": {
+            "re_review": len(re_review),
+            "removed_upstream": len(removed),
+            "new_uncovered": len(new_uncovered),
+            "still_valid": still_valid,
+        },
+        "re_review": re_review[:limit],
+        "removed_upstream": removed[:limit],
+        "new_uncovered": new_uncovered[:limit],
+    }

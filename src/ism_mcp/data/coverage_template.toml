@@ -3,6 +3,7 @@ schema_version = 1
 [scope]
 classification = "P"
 sections = []
+baseline_version = ""
 
 [project]
 name = ""
