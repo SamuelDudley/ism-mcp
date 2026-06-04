@@ -55,7 +55,8 @@ def test_upsert_and_list_versions(db):
     )
     versions = store.list_versions(db)
     assert [v["version"] for v in versions] == ["2026.03.24", "2025.12.9"]
-    assert store.get_version(db, "2025.12.9")["control_count"] == 2
+    dec = store.get_version(db, "2025.12.9")
+    assert dec is not None and dec["control_count"] == 2
 
 
 def test_upsert_version_replaces_existing(db):
@@ -72,7 +73,8 @@ def test_upsert_version_replaces_existing(db):
             ingested_at="2026-06-04T00:00:00Z",
             control_count=count,
         )
-    assert store.get_version(db, "2025.12.9")["control_count"] == 5
+    updated = store.get_version(db, "2025.12.9")
+    assert updated is not None and updated["control_count"] == 5
     assert len(store.list_versions(db)) == 1
 
 

@@ -27,7 +27,7 @@ def _ctl(version, description="d", applies=None) -> Control:
 
 def test_history_marks_changed_fields_and_bounds():
     order = ["2025.09.10", "2025.12.9", "2026.03.24"]
-    by_version = {
+    by_version: dict[str, Control | None] = {
         "2025.09.10": _ctl("2025.09.10", description="a"),
         "2025.12.9": _ctl("2025.12.9", description="a"),
         "2026.03.24": _ctl("2026.03.24", description="b"),
@@ -43,7 +43,7 @@ def test_history_marks_changed_fields_and_bounds():
 
 def test_history_records_removal():
     order = ["2025.12.9", "2026.03.24"]
-    by_version = {"2025.12.9": _ctl("2025.12.9"), "2026.03.24": None}
+    by_version: dict[str, Control | None] = {"2025.12.9": _ctl("2025.12.9"), "2026.03.24": None}
     out = diff.build_history("ism-0001", order, by_version)
     assert out["last_seen"] == "2025.12.9"
     assert [t["version"] for t in out["timeline"]] == ["2025.12.9"]

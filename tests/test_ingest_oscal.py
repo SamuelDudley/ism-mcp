@@ -45,7 +45,9 @@ def test_ingest_version_writes_controls_and_registry(db, oscal_dir: Path):
     )
     assert store.get_active_version(db) == "2025.12.9"
     assert store.count_controls(db) == 3
-    assert store.get_version(db, "2025.12.9")["git_tag"] == "v2025.12.9"
+    version_row = store.get_version(db, "2025.12.9")
+    assert version_row is not None
+    assert version_row["git_tag"] == "v2025.12.9"
 
 
 def test_ingest_version_is_idempotent(db, oscal_dir: Path):

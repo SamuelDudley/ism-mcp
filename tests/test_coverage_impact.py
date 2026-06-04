@@ -28,7 +28,9 @@ def _ctl(version, identifier, description="d", applies=None) -> Control:
     )
 
 
-def _entry(identifier, status="covered", reviewed_against="2025.12.9") -> coverage.ManifestEntry:
+def _entry(
+    identifier, status: coverage.Status = "covered", reviewed_against="2025.12.9"
+) -> coverage.ManifestEntry:
     return coverage.ManifestEntry(
         identifier=identifier,
         status=status,

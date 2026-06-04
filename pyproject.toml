@@ -22,8 +22,6 @@ dependencies = [
     "fastembed>=0.8.0",
     "mcp>=1.27.1",
     "numpy>=2.4.6",
-    "openpyxl>=3.1.5",
-    "pdfplumber>=0.11.9",
 ]
 
 [project.urls]

@@ -43,9 +43,11 @@ def test_applicable_surfaces_a_lexically_disjoint_semantic_match(
     db_path = tmp_path / "ism.db"
     conn = store.open_db(db_path)
     store.insert_controls(conn, sample_controls)
+    version = sample_controls[0].version
+    store.set_active_version(conn, version)
     embedder = FastEmbedEmbedder()
-    fetched = [c for c in (store.get_control(conn, c.identifier) for c in sample_controls) if c]
-    store.insert_embeddings(conn, list(embed_controls(fetched, embedder)))
+    rows = [(version, ident, blob) for ident, blob in embed_controls(sample_controls, embedder)]
+    store.insert_embeddings(conn, rows)
     conn.close()
     monkeypatch.setattr(server, "DEFAULT_DB", db_path)
     monkeypatch.setenv("ISM_MCP_EMBEDDER", "fastembed")
@@ -54,7 +56,7 @@ def test_applicable_surfaces_a_lexically_disjoint_semantic_match(
     # there can only come from semantic retrieval, and its why must say so.
     result = json.loads(server.ism_applicable("idle logout window", limit=3))
     server._reset_runtime_cache()
-    nine2 = next((r for r in result["results"] if r["identifier"] == "ISM-9002"), None)
+    nine2 = next((r for r in result["results"] if r["identifier"] == "ism-9002"), None)
     assert nine2 is not None, [r["identifier"] for r in result["results"]]
     assert "semantic" in nine2["why"]
     assert "lexical" not in nine2["why"]

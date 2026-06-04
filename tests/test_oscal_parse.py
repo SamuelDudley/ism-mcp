@@ -18,6 +18,7 @@ def test_parse_metadata():
     meta = oscal.parse_metadata(_catalog())
     assert meta.version == "2025.12.9"
     assert meta.oscal_version == "1.1.2"
+    assert meta.published is not None
     assert meta.published.startswith("2025-12-09")
 
 
