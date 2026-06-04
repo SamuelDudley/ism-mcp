@@ -62,7 +62,10 @@ def _vector_index(conn) -> retrieve.VectorIndex | None:
     embedder = _embedder()
     if embedder is None:
         return None
-    matrix, ids = store.load_embedding_matrix(conn, dim=embedder.dim)
+    version = store.get_active_version(conn)
+    if version is None:
+        return None
+    matrix, ids = store.load_embedding_matrix(conn, dim=embedder.dim, version=version)
     if len(ids) == 0:
         return None
     idx = retrieve.VectorIndex(matrix, ids)
@@ -75,7 +78,7 @@ def _conn() -> sqlite3.Connection:
     if not path.exists():
         raise RuntimeError(
             f"ISM database not found at {path}. "
-            "Run `ism-mcp ingest --xlsx PATH [--pdf PATH]` first."
+            "Run `ism-mcp ingest` or `ism-mcp ingest-history` first."
         )
     cached = _RUNTIME.get("conn")
     if cached is not None and _RUNTIME.get("conn_path") == path:
@@ -237,9 +240,9 @@ def ism_applicable(
     lexical_query = " ".join([work, *sorted(expanded_terms)]) if expanded_terms else work
 
     lex_results = store.search(conn, lexical_query, limit=50)
-    lex_ranking = [(_rowid_for(conn, c.identifier), 0.0) for c in lex_results]
+    lex_ranking = [(c.identifier, 0.0) for c in lex_results]
 
-    sem_ranking: list[tuple[int, float]] = []
+    sem_ranking: list[tuple[str, float]] = []
     semantic_used = False
     idx = _vector_index(conn)
     embedder = _embedder()
@@ -278,32 +281,31 @@ def ism_applicable(
     return json.dumps(response, indent=2)
 
 
-def _rowid_for(conn, identifier: str) -> int:
-    row = conn.execute("SELECT rowid FROM controls WHERE identifier = ?", (identifier,)).fetchone()
-    return int(row["rowid"]) if row else -1
-
-
 _WORD_RE = re.compile(r"\w+")
 _TEXT_FIELDS = ("description", "topic", "section", "guideline")
 
 
 def _materialise(
     conn,
-    fused: list[tuple[int, float]],
-    lex_ids: set[int],
-    sem_ids: set[int],
+    fused: list[tuple[str, float]],
+    lex_ids: set[str],
+    sem_ids: set[str],
     path_keywords: dict[str, set[str]],
     semantic_used: bool,
 ) -> list[dict]:
+    version = store.get_active_version(conn)
     out: list[dict] = []
-    for rowid, score in fused:
-        row = conn.execute("SELECT * FROM controls WHERE rowid = ?", (rowid,)).fetchone()
+    for identifier, score in fused:
+        row = conn.execute(
+            "SELECT * FROM controls WHERE version = ? AND identifier = ?",
+            (version, identifier),
+        ).fetchone()
         if row is None:
             continue
         why: list[str] = []
-        if semantic_used and rowid in sem_ids:
+        if semantic_used and identifier in sem_ids:
             why.append("semantic")
-        if rowid in lex_ids:
+        if identifier in lex_ids:
             why.append("lexical")
         if path_keywords:
             words = {w for f in _TEXT_FIELDS for w in _WORD_RE.findall(str(row[f]).lower())}
@@ -337,6 +339,8 @@ def _render_result(m: dict, verbose: bool) -> dict:
     r = m["row"]
     base = {
         "identifier": r["identifier"],
+        "label": r["label"],
+        "title": r["title"],
         "topic": r["topic"],
         "section": r["section"],
         "description": r["description"],
@@ -346,8 +350,7 @@ def _render_result(m: dict, verbose: bool) -> dict:
         "why": m["why"],
     }
     if verbose:
-        base["pdf_excerpt"] = r["pdf_excerpt"]
-        base["pdf_page"] = r["pdf_page"]
+        base["guideline"] = r["guideline"]
     return base
 
 
