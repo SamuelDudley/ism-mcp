@@ -13,7 +13,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from . import classification as cls
-from . import coverage, retrieve, store
+from . import coverage, diff, retrieve, store
 from . import paths as repo_paths
 from .embed import DeterministicHashEmbedder, Embedder, FastEmbedEmbedder
 
@@ -225,6 +225,69 @@ def ism_list_classifications() -> str:
 def ism_list_maturities() -> str:
     """Return the Essential Eight maturity levels."""
     return json.dumps({"maturities": ["ML1", "ML2", "ML3"]}, indent=2)
+
+
+@mcp.tool()
+def ism_diff(
+    from_version: str | None = None,
+    to_version: str | None = None,
+    change_types: list[str] | None = None,
+) -> str:
+    """Catalog delta between two ISM versions.
+
+    Defaults compare the version before active (from) to the active version (to), so a
+    bare call answers 'what changed in the latest release'. `change_types` narrows the
+    buckets (added, removed, reworded, retitled, moved, applicability_changed,
+    maturity_changed). Use ism_versions to see loadable versions.
+    """
+    conn = _conn()
+    versions = [v["version"] for v in store.list_versions(conn)]  # newest first
+    if len(versions) < 2 and (from_version is None or to_version is None):
+        return json.dumps(
+            {"error": "need two versions to diff", "hint": "load history with ingest-history"}
+        )
+    to_v = to_version or store.get_active_version(conn) or versions[0]
+    if from_version is not None:
+        from_v = from_version
+    else:
+        later = [v for v in versions if v < to_v]
+        from_v = later[0] if later else None
+    if from_v is None:
+        return json.dumps({"error": "no earlier version to compare against to_version"})
+    for v in (from_v, to_v):
+        if store.get_version(conn, v) is None:
+            return json.dumps({"error": f"no such version: {v}", "hint": "call ism_versions"})
+
+    result = diff.diff_controls(store.list_controls(conn, from_v), store.list_controls(conn, to_v))
+    if change_types:
+        result = {
+            "summary": {k: v for k, v in result["summary"].items() if k in change_types},
+            "changes": {k: v for k, v in result["changes"].items() if k in change_types},
+        }
+    return json.dumps({"from": from_v, "to": to_v, **result}, indent=2)
+
+
+@mcp.tool()
+def ism_history(identifier: str) -> str:
+    """Show one control's evolution across every loaded ISM version."""
+    conn = _conn()
+    versions = [v["version"] for v in store.list_versions(conn)]
+    order = sorted(versions)  # chronological, ascending
+    canon = None
+    for v in reversed(order):
+        canon = store.normalise_identifier(conn, identifier, version=v)
+        if canon is not None:
+            break
+    if canon is None:
+        return json.dumps(
+            {
+                "identifier": identifier,
+                "timeline": [],
+                "hint": "no control with that id in any version",
+            }
+        )
+    by_version = {v: store.get_control(conn, canon, version=v) for v in order}
+    return json.dumps(diff.build_history(canon, order, by_version), indent=2)
 
 
 @mcp.tool()

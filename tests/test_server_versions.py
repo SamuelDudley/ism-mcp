@@ -99,3 +99,27 @@ def test_ism_get_defaults_to_active_and_accepts_version(two_version_db):
 def test_ism_get_tolerant_identifier(two_version_db):
     out = json.loads(server.ism_get("ISM-9001"))
     assert out["identifier"] == "ism-9001"
+
+
+def test_ism_diff_defaults_to_latest_vs_previous(two_version_db):
+    out = json.loads(server.ism_diff())
+    assert out["from"] == "2025.12.9"
+    assert out["to"] == "2026.03.24"
+    # ism-9003 exists only in the active (new) version per the fixture:
+    assert "ism-9003" in {c["identifier"] for c in out["changes"]["added"]}
+
+
+def test_ism_diff_explicit_versions_and_unknown(two_version_db):
+    bad = json.loads(server.ism_diff(from_version="9999.99.99", to_version="2026.03.24"))
+    assert "error" in bad
+
+
+def test_ism_history_timeline(two_version_db):
+    out = json.loads(server.ism_history("ism-9001"))
+    assert out["identifier"] == "ism-9001"
+    assert [t["version"] for t in out["timeline"]] == ["2025.12.9", "2026.03.24"]
+
+
+def test_ism_diff_single_version_errors(single_version_db):
+    out = json.loads(server.ism_diff())
+    assert "error" in out
