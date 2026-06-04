@@ -1,0 +1,12 @@
+{
+  "catalog": {
+    "uuid": "fixture-e8-ml3",
+    "metadata": {"title": "ISM E8 ML3", "version": "2025.12.9", "oscal-version": "1.1.2"},
+    "groups": [
+      {"id": "g", "title": "Essential Eight", "controls": [
+        {"id": "ism-1997", "class": "ISM-control", "title": "Control: ism-1997",
+         "parts": [{"id": "ism-1997_smt", "name": "statement", "prose": "x"}]}
+      ]}
+    ]
+  }
+}
