@@ -1,116 +1,66 @@
-"""CLI orchestration: the ingest and serve subcommands."""
+"""CLI orchestration: fetch, ingest, ingest-history subcommands."""
 
 from __future__ import annotations
 
-import argparse
-import os
+import shutil
+import subprocess
 from pathlib import Path
 
-import openpyxl
+import pytest
 
 from ism_mcp import __main__ as cli
-from ism_mcp import ingest, server, store
-from tests.test_excerpt_extraction import _FakePage, _FakePdf
+from ism_mcp import store
 
-HEADERS = [
-    "Guideline",
-    "Section",
-    "Topic",
-    "Identifier",
-    "Revision",
-    "Updated",
-    "NC",
-    "OS",
-    "P",
-    "S",
-    "TS",
-    "ML1",
-    "ML2",
-    "ML3",
-    "Description",
-]
+FX = Path(__file__).parent / "fixtures" / "oscal"
 
 
-def _row(identifier: str, section: str, topic: str, description: str) -> list[str]:
-    return [
-        "Guidelines for testing",
-        section,
-        topic,
-        identifier,
-        "1",
-        "Jan-26",
-        "Yes",
-        "Yes",
-        "Yes",
-        "No",
-        "No",
-        "Yes",
-        "No",
-        "No",
-        description,
-    ]
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 
 
-def _write_workbook(path: Path) -> None:
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    assert ws is not None
-    ws.title = "Controls - January 2026"
-    ws.append(["ISM Controls"])
-    ws.append(HEADERS)
-    ws.append(_row("ISM-9001", "Encryption", "Network encryption", "Data is encrypted in transit."))
-    ws.append(_row("ISM-9002", "Authentication", "Session management", "Sessions terminate."))
-    wb.save(path)
+@pytest.fixture
+def oscal_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "oscal"
+    d.mkdir()
+    for f in FX.glob("*.json"):
+        shutil.copy(f, d / f.name)
+    return d
 
 
-def _ingest_args(**kw) -> argparse.Namespace:
-    base = dict(xlsx=None, pdf=None, db=None, revision=None, no_embeddings=True)
-    base.update(kw)
-    return argparse.Namespace(**base)
+@pytest.fixture
+def history_repo(tmp_path: Path, oscal_dir: Path) -> Path:
+    repo = tmp_path / "repo"
+    shutil.copytree(oscal_dir, repo)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "dec")
+    _git(repo, "tag", "v2025.12.9")
+    catalog = (repo / "ISM_catalog.json").read_text().replace("2025.12.9", "2026.03.24")
+    (repo / "ISM_catalog.json").write_text(catalog)
+    _git(repo, "commit", "-aqm", "mar")
+    _git(repo, "tag", "v2026.03.24")
+    return repo
 
 
-def test_cmd_ingest_no_embeddings_writes_db_and_meta(tmp_path):
-    xlsx = tmp_path / "ccm.xlsx"
-    _write_workbook(xlsx)
-    db_path = tmp_path / "ism.db"
-    rc = cli.cmd_ingest(_ingest_args(xlsx=str(xlsx), db=str(db_path), revision="2026-03"))
+def test_ingest_one_version(oscal_dir: Path, tmp_path: Path):
+    db = tmp_path / "ism.db"
+    rc = cli.main(["ingest", "--oscal", str(oscal_dir), "--db", str(db), "--no-embeddings"])
     assert rc == 0
-    conn = store.open_db(db_path)
-    assert store.count_controls(conn) == 2
-    assert store.get_meta(conn, "ism_revision") == "2026-03"
-    assert store.get_meta(conn, "xlsx_source") == str(xlsx)
-    _matrix, ids = store.load_embedding_matrix(conn, dim=384)
-    assert ids == []
+    conn = store.open_db(db)
+    assert store.get_active_version(conn) == "2025.12.9"
+    assert store.count_controls(conn) == 3
     conn.close()
 
 
-def test_cmd_ingest_attaches_pdf_excerpts(tmp_path, monkeypatch):
-    xlsx = tmp_path / "ccm.xlsx"
-    _write_workbook(xlsx)
-    pages = [_FakePage("Data is encrypted in transit.\nControl: ISM-9001; Revision: 1")]
-    monkeypatch.setattr(ingest.pdfplumber, "open", lambda _p: _FakePdf(pages))
-    db_path = tmp_path / "ism.db"
-    rc = cli.cmd_ingest(
-        _ingest_args(xlsx=str(xlsx), pdf=str(tmp_path / "ism.pdf"), db=str(db_path))
+def test_ingest_history_walks_tags(history_repo: Path, tmp_path: Path):
+    db = tmp_path / "ism.db"
+    rc = cli.main(
+        ["ingest-history", "--oscal-repo", str(history_repo), "--db", str(db), "--no-embeddings"]
     )
     assert rc == 0
-    conn = store.open_db(db_path)
-    c = store.get_control(conn, "ISM-9001")
-    assert c is not None and c.pdf_excerpt is not None
-    assert "encrypted in transit" in c.pdf_excerpt
-    assert store.get_meta(conn, "pdf_source") == str(tmp_path / "ism.pdf")
+    conn = store.open_db(db)
+    assert {v["version"] for v in store.list_versions(conn)} == {"2025.12.9", "2026.03.24"}
+    assert store.get_active_version(conn) == "2026.03.24"
     conn.close()
-
-
-def test_cmd_serve_sets_runtime_db_and_runs(tmp_path, monkeypatch):
-    # setenv (not delenv) so monkeypatch owns the key and restores it on teardown,
-    # even though cmd_serve writes os.environ directly.
-    monkeypatch.setenv("ISM_MCP_DB", str(tmp_path / "placeholder.db"))
-    ran = {}
-    monkeypatch.setattr(server, "run", lambda: ran.setdefault("ran", True))
-    custom = tmp_path / "custom.db"
-    rc = cli.cmd_serve(argparse.Namespace(db=str(custom)))
-    assert rc == 0
-    assert ran.get("ran") is True
-    assert os.environ["ISM_MCP_DB"] == str(custom)
-    assert server._active_db() == custom

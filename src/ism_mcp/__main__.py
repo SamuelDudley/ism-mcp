@@ -8,52 +8,100 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import ingest, install, server, store
+from . import fetch, ingest, install, server, store
+
+
+def _embedder_or_none(no_embeddings: bool):
+    if no_embeddings:
+        return None
+    from .embed import FastEmbedEmbedder
+
+    print(
+        "embedding controls (first run downloads ~130 MB to ~/.cache/fastembed)...",
+        file=sys.stderr,
+    )
+    return FastEmbedEmbedder()
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path = Path(args.db or server.DEFAULT_DB)
+    oscal_dir = Path(args.oscal) if args.oscal else fetch.DEFAULT_CACHE
+    if args.fetch:
+        print("fetching OSCAL mirror...", file=sys.stderr)
+        oscal_dir = fetch.ensure_clone(cache=oscal_dir)
     print(f"writing to {db_path}", file=sys.stderr)
     conn = store.open_db(db_path)
-    store.reset(conn)
-
-    xlsx_path = Path(args.xlsx)
-    print(f"parsing {xlsx_path}", file=sys.stderr)
-    controls = list(ingest.parse_xlsx(xlsx_path))
-    print(f"  found {len(controls)} controls", file=sys.stderr)
-
-    if args.pdf:
-        pdf_path = Path(args.pdf)
-        print(f"attaching PDF excerpts from {pdf_path} (this takes a minute)", file=sys.stderr)
-        controls = ingest.attach_pdf_excerpts(controls, pdf_path)
-        with_excerpts = sum(1 for c in controls if c.pdf_excerpt)
-        print(f"  matched excerpts for {with_excerpts}/{len(controls)} controls", file=sys.stderr)
-        store.set_meta(conn, "pdf_source", str(pdf_path))
-
-    store.insert_controls(conn, controls)
-    store.set_meta(conn, "xlsx_source", str(xlsx_path))
-    if args.revision:
-        store.set_meta(conn, "ism_revision", args.revision)
-
-    if args.no_embeddings:
-        print("skipping embeddings (--no-embeddings)", file=sys.stderr)
-    else:
-        from .embed import FastEmbedEmbedder
-        from .ingest import embed_controls
-
-        print(
-            "embedding controls (first run downloads ~130 MB to ~/.cache/fastembed)...",
-            file=sys.stderr,
-        )
-        persisted = [store.get_control(conn, c.identifier) for c in controls]
-        persisted = [c for c in persisted if c is not None]
-        embedder = FastEmbedEmbedder()
-        rows = list(embed_controls(persisted, embedder))
-        store.insert_embeddings(conn, rows)
-        print(f"embedded {len(rows)} controls", file=sys.stderr)
-
+    vmeta, controls = ingest.load_version_from_dir(oscal_dir)
+    print(f"parsed {len(controls)} controls for {vmeta.version}", file=sys.stderr)
+    embedder = _embedder_or_none(args.no_embeddings)
+    result = ingest.ingest_version(conn, vmeta, controls, embedder=embedder)
     conn.close()
-    print(f"done. {len(controls)} controls in {db_path}", file=sys.stderr)
+    print(f"done. {result}", file=sys.stderr)
+    return 0
+
+
+def cmd_ingest_history(args: argparse.Namespace) -> int:
+    db_path = Path(args.db or server.DEFAULT_DB)
+    repo_dir = Path(args.oscal_repo) if args.oscal_repo else fetch.DEFAULT_CACHE
+    if args.fetch or not (repo_dir / ".git").is_dir():
+        print("fetching OSCAL mirror...", file=sys.stderr)
+        repo_dir = fetch.ensure_clone(cache=repo_dir)
+    tags = fetch.list_tags(repo_dir)
+    if args.from_tag:
+        tags = [t for t in tags if t >= args.from_tag]
+    if args.to_tag:
+        tags = [t for t in tags if t <= args.to_tag]
+    if not tags:
+        print("no tags matched the range", file=sys.stderr)
+        return 1
+    conn = store.open_db(db_path)
+    # Default policy: embed only the newest (active) version. --embed-all embeds every
+    # version. --no-embeddings embeds none. Build the embedder once and choose per version.
+    embedder = None if args.no_embeddings else _embedder_or_none(False)
+    for i, tag in enumerate(tags):
+        is_last = i == len(tags) - 1
+        use = embedder if (args.embed_all or is_last) else None
+        vmeta, controls = ingest.load_version_from_tag(repo_dir, tag)
+        commit = fetch.current_commit(repo_dir, tag)
+        ingest.ingest_version(
+            conn,
+            vmeta,
+            controls,
+            embedder=use,
+            git_tag=tag,
+            git_commit=commit,
+            make_active=is_last,
+        )
+        print(f"  ingested {tag} ({len(controls)} controls)", file=sys.stderr)
+    conn.close()
+    print(f"done. {len(tags)} versions", file=sys.stderr)
+    return 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    repo_dir = fetch.ensure_clone(
+        cache=Path(args.oscal_repo) if args.oscal_repo else fetch.DEFAULT_CACHE
+    )
+    db_path = Path(args.db or server.DEFAULT_DB)
+    conn = store.open_db(db_path)
+    tags = fetch.list_tags(repo_dir)
+    if not tags:
+        print("no tags found", file=sys.stderr)
+        return 1
+    latest = tags[-1]
+    vmeta, controls = ingest.load_version_from_tag(repo_dir, latest)
+    embedder = _embedder_or_none(args.no_embeddings)
+    ingest.ingest_version(
+        conn,
+        vmeta,
+        controls,
+        embedder=embedder,
+        git_tag=latest,
+        git_commit=fetch.current_commit(repo_dir, latest),
+        make_active=True,
+    )
+    conn.close()
+    print(f"done. active version {vmeta.version}", file=sys.stderr)
     return 0
 
 
@@ -117,25 +165,42 @@ def cmd_install(args: argparse.Namespace) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ism-mcp")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_ingest = sub.add_parser(
-        "ingest", help="Parse an ISM XLSX (+ optional PDF) into the local database."
-    )
-    p_ingest.add_argument("--xlsx", required=True, help="Path to the Cloud Controls Matrix XLSX.")
-    p_ingest.add_argument(
-        "--pdf", help="Optional path to the ISM PDF for per-control text excerpts."
-    )
+    p_ingest = sub.add_parser("ingest", help="Parse one OSCAL ISM release into the database.")
+    p_ingest.add_argument("--oscal", help="Path to an OSCAL clone (default: managed cache).")
     p_ingest.add_argument("--db", help=f"Output database path (default: {server.DEFAULT_DB}).")
-    p_ingest.add_argument("--revision", help="Revision label to record (e.g. 2026-03).")
+    p_ingest.add_argument("--fetch", action="store_true", help="Refresh the managed cache first.")
     p_ingest.add_argument(
         "--no-embeddings",
         action="store_true",
         help="skip embedding generation. Server falls back to lexical-only.",
     )
     p_ingest.set_defaults(func=cmd_ingest)
+
+    p_hist = sub.add_parser("ingest-history", help="Walk OSCAL git tags and ingest every release.")
+    p_hist.add_argument("--oscal-repo", help="Path to an OSCAL clone (default: managed cache).")
+    p_hist.add_argument("--db", help=f"Output database path (default: {server.DEFAULT_DB}).")
+    p_hist.add_argument(
+        "--from", dest="from_tag", help="Earliest tag to include (e.g. v2024.12.19)."
+    )
+    p_hist.add_argument("--to", dest="to_tag", help="Latest tag to include.")
+    p_hist.add_argument("--fetch", action="store_true", help="Refresh the managed cache first.")
+    p_hist.add_argument(
+        "--embed-all", action="store_true", help="Embed every version, not just the newest."
+    )
+    p_hist.add_argument(
+        "--no-embeddings", action="store_true", help="skip all embedding generation."
+    )
+    p_hist.set_defaults(func=cmd_ingest_history)
+
+    p_update = sub.add_parser("update", help="Fetch and ingest the latest OSCAL release.")
+    p_update.add_argument("--oscal-repo", help="Path to an OSCAL clone (default: managed cache).")
+    p_update.add_argument("--db", help=f"Database path (default: {server.DEFAULT_DB}).")
+    p_update.add_argument("--no-embeddings", action="store_true", help="skip embeddings.")
+    p_update.set_defaults(func=cmd_update)
 
     p_serve = sub.add_parser("serve", help="Run the MCP server over stdio.")
     p_serve.add_argument("--db", help=f"Database path (default: {server.DEFAULT_DB}).")
@@ -168,7 +233,7 @@ def main() -> int:
     )
     p_install.set_defaults(func=cmd_install)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args.func(args)
 
 
