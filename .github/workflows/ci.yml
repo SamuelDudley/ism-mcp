@@ -21,8 +21,7 @@ jobs:
       - run: bash scripts/ci.sh
 
   slow:
-    # Downloads the real fastembed model, so run it on demand and weekly, not per PR.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    # Downloads the real fastembed model on each run.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

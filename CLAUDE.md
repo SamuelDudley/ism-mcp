@@ -27,7 +27,7 @@ src/ism_mcp/         the package
   data/              path keyword map + coverage template
 tests/               pytest suite with hermetic fixtures (tests/fixtures/oscal mini catalogs)
 scripts/ci.sh        local CI entrypoint
-.github/workflows/ci.yml  GitHub Actions: runs scripts/ci.sh, slow suite on demand and weekly
+.github/workflows/ci.yml  GitHub Actions: runs scripts/ci.sh and the slow suite on every trigger
 pyproject.toml       uv-managed, hatchling build
 glama.json           maintainer metadata for the Glama MCP directory
 README.md            user-facing install and usage
