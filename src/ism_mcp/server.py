@@ -23,7 +23,17 @@ DEFAULT_DB = Path(os.environ.get("ISM_MCP_DB", Path.home() / ".local/share/ism-m
 MAX_LIMIT = 200
 
 
-mcp = FastMCP("ism-mcp")
+mcp = FastMCP(
+    "ism-mcp",
+    instructions=(
+        "Query layer over a local SQLite copy of the ASD Information Security Manual "
+        "(ISM), including Essential Eight maturity data. All tools return JSON strings "
+        'and report failures as {"error": ...} rather than raising. Data is as fresh as '
+        "the last ingested ISM release (check with ism_stats). Every tool is read-only "
+        "except ism_coverage_upsert, which edits the project's .ism-coverage.toml. "
+        "No network access, auth, or rate limits."
+    ),
+)
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 WRITES_MANIFEST = ToolAnnotations(
@@ -99,11 +109,12 @@ def _conn() -> sqlite3.Connection:
 def ism_get(identifier: str, version: str | None = None) -> str:
     """Get the full record for one ISM control by identifier (e.g. `ism-1781`).
 
-    Identifier input is tolerant: `ISM-1781`, bare `1781`, and legacy labels resolve to
-    the canonical OSCAL id. Returns the control as JSON, or `{"error": ...}` when no
-    control matches. Use ism_search or ism_applicable first when the identifier is
-    unknown. Defaults to the active ISM version. Pass `version` (see ism_versions)
-    for a historical one.
+    Identifier input is tolerant: `ISM-1781`, bare `1781`, and legacy labels resolve
+    to the canonical OSCAL id. Returns JSON with title, control text, section, topic,
+    classification applicability, and Essential Eight maturity flags, or
+    `{"error": ...}` when nothing matches. Use ism_search or ism_applicable first
+    when the identifier is unknown. Defaults to the active ISM version. Pass
+    `version` (see ism_versions) for a historical one.
     """
     conn = _conn()
     c = store.get_control(conn, identifier, version=version)
@@ -117,8 +128,10 @@ def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
     """Full-text keyword search (FTS5 BM25) over ISM control text and topics.
 
     Best when you already know the terms, an exact phrase, or part of a control title.
-    To rank controls against a free-text description of work, use ism_applicable instead.
-    Defaults to the active ISM version.
+    To rank controls against a free-text description of work, use ism_applicable
+    instead. FTS operators in the query are neutralised, so input matches literally.
+    Returns `{query, count, results}` with full control records. `limit` defaults to
+    10 (capped at 200). Defaults to the active ISM version.
     """
     conn = _conn()
     results = store.search(conn, query, limit=_clamp_limit(limit), version=version)
@@ -130,7 +143,13 @@ def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_list_by_classification(classification: str, version: str | None = None) -> str:
-    """List controls that apply at a given classification level. Allowed values: NC, OS, P, S, TS."""
+    """List controls that apply at a given classification level.
+
+    `classification` takes canonical abbreviations only: NC, OS, P, S, or TS (see
+    ism_list_classifications for the OFFICIAL through TOP_SECRET mapping). Returns
+    `{classification, count, identifiers}` with ids only. Fetch full records with
+    ism_get. An unknown level returns `{"error": ...}`.
+    """
     conn = _conn()
     try:
         results = store.list_by_classification(conn, classification, version=version)
@@ -150,7 +169,8 @@ def ism_list_by_classification(classification: str, version: str | None = None) 
 def ism_list_topics(version: str | None = None) -> str:
     """List all distinct topic strings present in the ISM.
 
-    The vocabulary for the `topic` argument of ism_list_by_topic.
+    The vocabulary for the `topic` argument of ism_list_by_topic. Returns
+    `{count, topics}` for the active version unless `version` is passed.
     """
     conn = _conn()
     topics = store.list_topics(conn, version=version)
@@ -159,7 +179,11 @@ def ism_list_topics(version: str | None = None) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_list_by_topic(topic: str, version: str | None = None) -> str:
-    """List controls under a specific topic (exact match, use `ism_list_topics` to enumerate)."""
+    """List controls under a specific topic (exact match, use ism_list_topics to enumerate).
+
+    Returns `{topic, count, identifiers}` with ids only. Fetch full records with
+    ism_get. An unknown topic returns an empty list, not an error.
+    """
     conn = _conn()
     results = store.list_by_topic(conn, topic, version=version)
     return json.dumps(
@@ -170,7 +194,12 @@ def ism_list_by_topic(topic: str, version: str | None = None) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_stats() -> str:
-    """Report database statistics: active version, total versions, and control count."""
+    """Report database state: active ISM version, version and control counts, db path.
+
+    Takes no arguments. Useful as a first call to confirm data is ingested and see
+    which ISM release the other tools will answer from. For the full version list
+    use ism_versions.
+    """
     conn = _conn()
     active = store.get_active_version(conn)
     row = store.get_version(conn, active) if active else None
@@ -189,7 +218,12 @@ def ism_stats() -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_versions() -> str:
-    """List loaded ISM versions, newest first. The vocabulary for version/from/to arguments."""
+    """List loaded ISM versions, newest first. The vocabulary for version/from/to arguments.
+
+    Returns `{active, count, versions}` where each entry carries version, label,
+    published date, control_count, and git_tag. Call this before passing `version`,
+    `from_version`, or `to_version` to other tools.
+    """
     conn = _conn()
     active = store.get_active_version(conn)
     versions = store.list_versions(conn)
@@ -215,7 +249,10 @@ def ism_versions() -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_list_sections(version: str | None = None) -> str:
-    """List the distinct ISM Section values, the vocabulary for the `tags` filter on `ism_applicable`."""
+    """List the distinct ISM Section values, the vocabulary for the `tags` filter on ism_applicable.
+
+    Returns `{count, sections}` for the active version unless `version` is passed.
+    """
     conn = _conn()
     sections = store.list_sections(conn, version=version)
     return json.dumps({"count": len(sections), "sections": sections}, indent=2)
@@ -223,7 +260,12 @@ def ism_list_sections(version: str | None = None) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_list_classifications() -> str:
-    """Return the classification enum (canonical abbreviations and friendly aliases)."""
+    """Return the classification vocabulary as parallel lists.
+
+    `canonical[i]` (NC, OS, P, S, TS) pairs with `friendly[i]` (OFFICIAL through
+    TOP_SECRET). ism_applicable accepts either form. ism_list_by_classification
+    accepts canonical only. Static data, no database read.
+    """
     return json.dumps(
         {
             "canonical": ["NC", "OS", "P", "S", "TS"],
@@ -241,7 +283,13 @@ def ism_list_classifications() -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_list_maturities() -> str:
-    """Return the Essential Eight maturity levels."""
+    """Return the Essential Eight maturity levels: ML1, ML2, ML3.
+
+    The Essential Eight is the ASD's baseline set of mitigation strategies, and only
+    controls belonging to it carry a maturity rating. These levels are the vocabulary
+    for the `maturity` filter on ism_applicable and for coverage manifest scope.
+    Static data, no database read.
+    """
     return json.dumps({"maturities": ["ML1", "ML2", "ML3"]}, indent=2)
 
 
@@ -256,7 +304,9 @@ def ism_diff(
     Defaults compare the version before active (from) to the active version (to), so a
     bare call answers 'what changed in the latest release'. `change_types` narrows the
     buckets (added, removed, reworded, retitled, moved, applicability_changed,
-    maturity_changed). Use ism_versions to see loadable versions.
+    maturity_changed). Returns `{from, to, summary, changes}`. Unknown versions return
+    `{"error": ...}`. Use ism_versions to see loadable versions, and ism_history for
+    one control's timeline instead of the whole catalog.
     """
     conn = _conn()
     versions = [v["version"] for v in store.list_versions(conn)]  # newest first
@@ -289,8 +339,10 @@ def ism_diff(
 def ism_history(identifier: str) -> str:
     """Show one control's evolution across every loaded ISM version.
 
-    Returns a chronological timeline of changes to that single control. For the
-    whole-catalog delta between two versions, use ism_diff instead.
+    Returns a chronological timeline of changes to that single control. Identifier
+    input is tolerant like ism_get. An unknown id returns an empty timeline with a
+    hint rather than an error. For the whole-catalog delta between two versions,
+    use ism_diff instead.
     """
     conn = _conn()
     versions = [v["version"] for v in store.list_versions(conn)]
@@ -326,12 +378,14 @@ def ism_applicable(
 
     The primary discovery tool. Describe the work in a sentence or two and it returns
     the most relevant controls. For exact keyword or phrase lookup, use ism_search.
-    Uses hybrid retrieval (semantic embeddings + FTS5 BM25) fused with Reciprocal Rank Fusion.
-    Optional filters: classification (NC|OS|P|S|TS or OFFICIAL|...|TOP_SECRET),
-    maturity (ML1|ML2|ML3, Essential Eight only: only ~126 of 1081 controls carry a maturity rating,
-    so passing maturity drops every other control; leave it unset unless scoping to the Essential Eight),
-    tags (validated against ism_list_sections), paths (repo paths whose tokens expand the lexical query).
-    `score` in each result is a normalised RRF score in [0.0, 1.0], not a probability.
+    Uses hybrid retrieval (semantic embeddings + FTS5 BM25) fused with Reciprocal
+    Rank Fusion. Optional filters: classification (NC|OS|P|S|TS or OFFICIAL through
+    TOP_SECRET), maturity (ML1|ML2|ML3, Essential Eight controls only, so leave it
+    unset unless scoping to the Essential Eight), tags (validated against
+    ism_list_sections), paths (repo paths whose tokens expand the lexical query).
+    Invalid filter values return `{"error": ...}`. `limit` defaults to 20 (capped at
+    200). `verbose` adds each control's guideline text to the results. `score` is a
+    normalised RRF score in [0.0, 1.0], not a probability.
     """
     conn = _conn()
 
@@ -527,8 +581,10 @@ def ism_coverage_read(project_path: str | None = None, status_filter: str | None
     """Read the project's coverage manifest (`.ism-coverage.toml`). Never writes.
 
     Returns scope, summary counts, and curated entries. Walks up from cwd to find the
-    manifest if `project_path` is omitted. `status_filter` narrows the controls map to a
-    single status (`covered|partial|not-applicable|deferred`) while summary stays unfiltered.
+    manifest if `project_path` is omitted and returns `{"error": ...}` when none is
+    found. `status_filter` narrows the controls map to a single status
+    (`covered|partial|not-applicable|deferred`) while summary stays unfiltered. To
+    see what is missing rather than what is curated, use ism_coverage_gaps.
     """
     path, err = _find_manifest_or_error(project_path)
     if err is not None:
@@ -597,10 +653,11 @@ def ism_coverage_upsert(
     """Create or update one entry in the coverage manifest (`.ism-coverage.toml`).
 
     The only tool that writes to disk. It rewrites the manifest file atomically and an
-    existing entry for the identifier is replaced whole. Validates identifier against
-    the ISM DB, validates status enum, validates that every attachment path resolves on
-    disk and that every url and attachment carries a description. `last_reviewed`
-    defaults to today.
+    existing entry for the identifier is replaced whole. `status` must be one of
+    covered, partial, not-applicable, or deferred. Validates identifier against the
+    ISM DB, requires every attachment path to resolve on disk and every url and
+    attachment to carry a description. `last_reviewed` defaults to today. Returns the
+    updated summary plus warnings, or `{"error": ...}` on validation failure.
     """
     path, err = _find_manifest_or_error(project_path)
     if err is not None:
@@ -730,9 +787,12 @@ def ism_coverage_impact(
 ) -> str:
     """Report what a newer ISM version means for the project's coverage. Never writes.
 
-    Buckets covered/partial entries into re_review (control changed since it was assessed),
-    removed_upstream (control gone at target), and new_uncovered (now in scope, no entry).
-    `target_version` defaults to scope.baseline_version or the active version.
+    Buckets covered/partial entries into re_review (control changed since it was
+    assessed), removed_upstream (control gone at target), and new_uncovered (now in
+    scope, no entry). `target_version` defaults to scope.baseline_version or the
+    active version. Reads the manifest like ism_coverage_read, walking up from cwd
+    when `project_path` is omitted. Run this after ingesting a new ISM release, then
+    curate the buckets with ism_coverage_upsert.
     """
     path, err = _find_manifest_or_error(project_path)
     if err is not None:
