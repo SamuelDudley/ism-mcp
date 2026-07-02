@@ -30,7 +30,7 @@ docs/plans/              older implementation plans
 docs/superpowers/plans/  implementation plans
 docs/superpowers/specs/  design and vision docs
 scripts/ci.sh        local CI entrypoint
-.github/workflows/ci.yml  GitHub Actions: runs scripts/ci.sh, slow suite on demand and weekly
+.github/workflows/ci.yml  GitHub Actions: runs scripts/ci.sh and the slow suite on every trigger
 pyproject.toml       uv-managed, hatchling build
 glama.json           maintainer metadata for the Glama MCP directory
 HANDOVER.md          session-to-session handover

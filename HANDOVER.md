@@ -53,7 +53,7 @@ tests/               pytest suite with hermetic fixtures
   fixtures/oscal/    mini ISM_catalog.json + 3 mini E8 catalogs
 scripts/ci.sh        local CI entrypoint
 scripts/prepare-public-release.sh  build the public tree (excludes HANDOVER.md and docs/)
-.github/workflows/ci.yml  GitHub Actions: fmt, lint, type, test (slow on demand)
+.github/workflows/ci.yml  GitHub Actions: fmt, lint, type, test, slow suite
 docs/plans/          older implementation plans
 docs/superpowers/plans/   implementation plans (2026-06-04-multi-version-ism-oscal.md)
 docs/superpowers/specs/   design and vision docs (2026-06-04-multi-version-ism-oscal-design.md)
