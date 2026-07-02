@@ -1,6 +1,6 @@
 # Next-Session Handover
 
-> Last updated: 2026-06-04 (multi-version OSCAL migration). Read this first when picking up the project.
+> Last updated: 2026-07-02 (v2.0.2, Glama listing hardening). Read this first when picking up the project.
 
 ## What this is
 
@@ -26,7 +26,9 @@ Canonical identifiers are the OSCAL ids (`ism-1001`, `ism-principle-gov-01`). Lo
 
 Embeddings are `bge-small-en-v1.5` via `fastembed`, keyed by `(version, identifier)`. `ingest-history` embeds only the newest (active) version by default to keep the history walk fast; `--embed-all` embeds every version.
 
-Test suite: 225 fast tests plus 3 opt-in slow tests behind `./scripts/ci.sh slow`. `openpyxl` and `pdfplumber` are removed; OSCAL is parsed with stdlib `json` and `fetch.py` shells out to `git`.
+Test suite: 236 fast tests plus 3 opt-in slow tests behind `./scripts/ci.sh slow`. `openpyxl` and `pdfplumber` are removed; OSCAL is parsed with stdlib `json` and `fetch.py` shells out to `git`.
+
+All tools carry MCP `ToolAnnotations` (`readOnlyHint` etc.). `ism_coverage_upsert` is the only tool that writes. Tool docstrings state read/write behaviour and how to choose between `ism_search` (keyword) and `ism_applicable` (free-text ranking). `glama.json` at the repo root names the maintainer for the Glama MCP directory listing (`https://glama.ai/mcp/servers/SamuelDudley/ism-mcp`).
 
 ## Repository layout
 
@@ -56,6 +58,7 @@ docs/plans/          older implementation plans
 docs/superpowers/plans/   implementation plans (2026-06-04-multi-version-ism-oscal.md)
 docs/superpowers/specs/   design and vision docs (2026-06-04-multi-version-ism-oscal-design.md)
 pyproject.toml       uv-managed, hatchling build, ruff + pyright + pytest config
+glama.json           maintainer metadata for the Glama MCP directory
 LICENSE              MIT
 HANDOVER.md          this file (private, excluded from the public tree)
 CLAUDE.md            project conventions for AI agents
@@ -92,15 +95,11 @@ A real Dec-2025 to Mar-2026 diff via `server.ism_diff()` reports roughly: 27 add
 
 ## Next action
 
-`pyproject` is at `2.0.0` (major bump: the OSCAL migration changed the identifier scheme and ingest CLI). Tag `v2.0` is cut on the private `origin` file remote (`git+file:///home/dudley/code/ism-mcp.git@v2.0`) and is what local consumers (e.g. wayland-remote) pin to. The XLSX-based v1.1 public release was never cut.
+`pyproject` is at `2.0.2`. Public releases `v2.0`, `v2.0.1`, and `v2.0.2` are tagged on `https://github.com/samueldudley/ism-mcp`. Publishing is now additive: the release script prints clone/rsync/commit/tag commands that stack a snapshot commit on top of the public history (no re-init, no force push). GitHub Actions on the public repo is green as of v2.0.2 (a pyright literal-type error in `tests/test_coverage_canonical.py` had CI red from v2.0.1 to v2.0.2).
 
-The remaining step is to cut the first OSCAL-based **public** release:
+One manual step is pending on the Glama directory listing (`https://glama.ai/mcp/servers/SamuelDudley/ism-mcp`): the owner must claim the server by signing into Glama with GitHub, which also triggers a re-index (their snapshot predates the version/diff/history tools).
 
-1. Build the public DB: `uv run ism-mcp ingest-history --oscal-repo /home/dudley/code/ism-oscal` (with embeddings on the active version), then run `./scripts/prepare-public-release.sh`.
-2. Publish the public GitHub repo `samueldudley/ism-mcp` and tag `v2.0` (the script prints the exact commands). This dev repo stays private.
-3. Re-generate consumer configs with `ism-mcp install --repo https://github.com/samueldudley/ism-mcp.git --rev v2.0`.
-
-After that, sub-project C (Graph and curated cuts) remains. Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it. Note that `ism_diff`/`ism_history` already cover part of the "history" intent; the `--embed-all` history embeddings would let `ism_neighbors` work across versions.
+Next development work is sub-project C (Graph and curated cuts). Open `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md` and brainstorm it. Note that `ism_diff`/`ism_history` already cover part of the "history" intent; the `--embed-all` history embeddings would let `ism_neighbors` work across versions.
 
 ## Roadmap
 
@@ -144,6 +143,6 @@ See `CLAUDE.md` for the canonical list. Highlights:
 1. Read this file (you're here).
 2. Read `CLAUDE.md` for working conventions.
 3. Run the verification block in "Verifying current state" above.
-4. Follow "Next action" to cut the OSCAL-based release, then brainstorm sub-project C from `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md`.
+4. Follow "Next action": brainstorm sub-project C from `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md`.
 
-Branch state: the multi-version OSCAL work is on `feature/multi-version-oscal` (design `docs/superpowers/specs/2026-06-04-multi-version-ism-oscal-design.md`, plan `docs/superpowers/plans/2026-06-04-multi-version-ism-oscal.md`). Land it onto `main` per the "Closing a development branch" checklist in `CLAUDE.md`. Earlier feature branches were merged and deleted.
+Branch state: `main` is up to date with `origin` and all feature branches are merged and deleted. The public repo `samueldudley/ism-mcp` is at v2.0.2.
