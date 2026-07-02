@@ -33,7 +33,7 @@ def _ctl(identifier, section="s") -> Control:
     )
 
 
-def _entry(identifier, status="covered") -> coverage.ManifestEntry:
+def _entry(identifier, status: coverage.Status = "covered") -> coverage.ManifestEntry:
     return coverage.ManifestEntry(
         identifier=identifier, status=status, how_met="x", last_reviewed=date(2025, 12, 15)
     )

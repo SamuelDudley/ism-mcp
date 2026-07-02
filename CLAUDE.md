@@ -27,7 +27,9 @@ src/ism_mcp/         the package
   data/              path keyword map + coverage template
 tests/               pytest suite with hermetic fixtures (tests/fixtures/oscal mini catalogs)
 scripts/ci.sh        local CI entrypoint
+.github/workflows/ci.yml  GitHub Actions: runs scripts/ci.sh, slow suite on demand and weekly
 pyproject.toml       uv-managed, hatchling build
+glama.json           maintainer metadata for the Glama MCP directory
 README.md            user-facing install and usage
 ```
 
@@ -96,7 +98,7 @@ Deployments launch the server with `uvx --from git+<repo>@<tag> ism-mcp serve`, 
 To cut a release:
 
 1. Land the work on `main` and run `./scripts/ci.sh`. Confirm `==> CI OK`.
-2. Build and publish the public snapshot. The script prints the `git init`/commit/push and `git tag -a vX.Y` commands for the public repo.
+2. Build and publish the public snapshot. The script prints clone/rsync/commit/push and `git tag -a vX.Y` commands that add one snapshot commit on top of the public repo's history. Never force-push the public `main`.
 
    ```bash
    ./scripts/prepare-public-release.sh

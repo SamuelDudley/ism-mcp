@@ -1,6 +1,6 @@
 [project]
 name = "ism-mcp"
-version = "2.0.1"
+version = "2.0.2"
 description = "Agent-friendly query layer over the ASD Information Security Manual, served via MCP."
 readme = "README.md"
 requires-python = ">=3.14"
