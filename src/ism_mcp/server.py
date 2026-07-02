@@ -11,6 +11,7 @@ from datetime import date as _date
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from . import classification as cls
 from . import coverage, diff, retrieve, store
@@ -23,6 +24,11 @@ MAX_LIMIT = 200
 
 
 mcp = FastMCP("ism-mcp")
+
+READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+WRITES_MANIFEST = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
+)
 
 
 _RUNTIME: dict[str, object] = {}
@@ -89,7 +95,7 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_get(identifier: str, version: str | None = None) -> str:
     """Get the full record for one ISM control by identifier (e.g. `ism-1781`).
 
@@ -102,9 +108,14 @@ def ism_get(identifier: str, version: str | None = None) -> str:
     return json.dumps(c.as_dict(), indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
-    """Full-text search over ISM control text and topics. Defaults to the active version."""
+    """Full-text keyword search (FTS5 BM25) over ISM control text and topics.
+
+    Best when you already know the terms, an exact phrase, or part of a control title.
+    To rank controls against a free-text description of work, use ism_applicable instead.
+    Defaults to the active ISM version.
+    """
     conn = _conn()
     results = store.search(conn, query, limit=_clamp_limit(limit), version=version)
     return json.dumps(
@@ -113,7 +124,7 @@ def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_list_by_classification(classification: str, version: str | None = None) -> str:
     """List controls that apply at a given classification level. Allowed values: NC, OS, P, S, TS."""
     conn = _conn()
@@ -131,15 +142,18 @@ def ism_list_by_classification(classification: str, version: str | None = None) 
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_list_topics(version: str | None = None) -> str:
-    """List all distinct topic strings present in the ISM."""
+    """List all distinct topic strings present in the ISM.
+
+    The vocabulary for the `topic` argument of ism_list_by_topic.
+    """
     conn = _conn()
     topics = store.list_topics(conn, version=version)
     return json.dumps({"count": len(topics), "topics": topics}, indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_list_by_topic(topic: str, version: str | None = None) -> str:
     """List controls under a specific topic (exact match, use `ism_list_topics` to enumerate)."""
     conn = _conn()
@@ -150,7 +164,7 @@ def ism_list_by_topic(topic: str, version: str | None = None) -> str:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_stats() -> str:
     """Report database statistics: active version, total versions, and control count."""
     conn = _conn()
@@ -169,7 +183,7 @@ def ism_stats() -> str:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_versions() -> str:
     """List loaded ISM versions, newest first. The vocabulary for version/from/to arguments."""
     conn = _conn()
@@ -195,7 +209,7 @@ def ism_versions() -> str:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_list_sections(version: str | None = None) -> str:
     """List the distinct ISM Section values, the vocabulary for the `tags` filter on `ism_applicable`."""
     conn = _conn()
@@ -203,7 +217,7 @@ def ism_list_sections(version: str | None = None) -> str:
     return json.dumps({"count": len(sections), "sections": sections}, indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_list_classifications() -> str:
     """Return the classification enum (canonical abbreviations and friendly aliases)."""
     return json.dumps(
@@ -221,13 +235,13 @@ def ism_list_classifications() -> str:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_list_maturities() -> str:
     """Return the Essential Eight maturity levels."""
     return json.dumps({"maturities": ["ML1", "ML2", "ML3"]}, indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_diff(
     from_version: str | None = None,
     to_version: str | None = None,
@@ -267,9 +281,13 @@ def ism_diff(
     return json.dumps({"from": from_v, "to": to_v, **result}, indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_history(identifier: str) -> str:
-    """Show one control's evolution across every loaded ISM version."""
+    """Show one control's evolution across every loaded ISM version.
+
+    Returns a chronological timeline of changes to that single control. For the
+    whole-catalog delta between two versions, use ism_diff instead.
+    """
     conn = _conn()
     versions = [v["version"] for v in store.list_versions(conn)]
     order = sorted(versions)  # chronological, ascending
@@ -290,7 +308,7 @@ def ism_history(identifier: str) -> str:
     return json.dumps(diff.build_history(canon, order, by_version), indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_applicable(
     work: str,
     classification: str | None = None,
@@ -302,6 +320,8 @@ def ism_applicable(
 ) -> str:
     """Rank ISM controls relevant to a free-text description of planned or current work.
 
+    The primary discovery tool. Describe the work in a sentence or two and it returns
+    the most relevant controls. For exact keyword or phrase lookup, use ism_search.
     Uses hybrid retrieval (semantic embeddings + FTS5 BM25) fused with Reciprocal Rank Fusion.
     Optional filters: classification (NC|OS|P|S|TS or OFFICIAL|...|TOP_SECRET),
     maturity (ML1|ML2|ML3, Essential Eight only: only ~126 of 1081 controls carry a maturity rating,
@@ -498,12 +518,13 @@ def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) ->
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_coverage_read(project_path: str | None = None, status_filter: str | None = None) -> str:
-    """Read the project's coverage manifest. Returns scope, summary counts, and curated entries.
+    """Read the project's coverage manifest (`.ism-coverage.toml`). Never writes.
 
-    Walks up from cwd if `project_path` is omitted. `status_filter` narrows the controls map
-    to a single status (`covered|partial|not-applicable|deferred`); summary is unfiltered.
+    Returns scope, summary counts, and curated entries. Walks up from cwd to find the
+    manifest if `project_path` is omitted. `status_filter` narrows the controls map to a
+    single status (`covered|partial|not-applicable|deferred`) while summary stays unfiltered.
     """
     path, err = _find_manifest_or_error(project_path)
     if err is not None:
@@ -554,7 +575,7 @@ def _is_in_scope(scope: dict, control) -> bool:
     return True
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITES_MANIFEST)
 def ism_coverage_upsert(
     identifier: str,
     status: str,
@@ -569,11 +590,13 @@ def ism_coverage_upsert(
     attachments: list[dict] | None = None,
     project_path: str | None = None,
 ) -> str:
-    """Create or update one entry in the coverage manifest.
+    """Create or update one entry in the coverage manifest (`.ism-coverage.toml`).
 
-    Validates identifier against the ISM DB, validates status enum, validates that
-    every attachment path resolves on disk and that every url and attachment carries
-    a description. `last_reviewed` defaults to today. Writes are atomic.
+    The only tool that writes to disk. It rewrites the manifest file atomically and an
+    existing entry for the identifier is replaced whole. Validates identifier against
+    the ISM DB, validates status enum, validates that every attachment path resolves on
+    disk and that every url and attachment carries a description. `last_reviewed`
+    defaults to today.
     """
     path, err = _find_manifest_or_error(project_path)
     if err is not None:
@@ -627,13 +650,13 @@ def ism_coverage_upsert(
     return json.dumps(result, indent=2)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_coverage_gaps(
     work: str | None = None,
     project_path: str | None = None,
     limit: int = 50,
 ) -> str:
-    """Return outstanding in-scope controls (uncurated, partial, deferred).
+    """Return outstanding in-scope controls (uncurated, partial, deferred). Never writes.
 
     If `work` is supplied, runs `ism_applicable` with the project's scope as filters
     and intersects with the manifest to return work-relevant gaps ranked by score.
@@ -692,13 +715,13 @@ def ism_coverage_gaps(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def ism_coverage_impact(
     project_path: str | None = None,
     target_version: str | None = None,
     limit: int = 50,
 ) -> str:
-    """Report what a newer ISM version means for the project's coverage.
+    """Report what a newer ISM version means for the project's coverage. Never writes.
 
     Buckets covered/partial entries into re_review (control changed since it was assessed),
     removed_upstream (control gone at target), and new_uncovered (now in scope, no entry).
