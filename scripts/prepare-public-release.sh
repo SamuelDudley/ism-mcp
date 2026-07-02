@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/samueldudley/ism-mcp"
 PUSH_URL="git@github.com:samueldudley/ism-mcp.git"
-TAG="v2.0.1"
+TAG="v2.0.2"
 
 cd "$(git rev-parse --show-toplevel)"
 OUT="${1:-dist/public}"
@@ -121,9 +121,9 @@ fi
 
 echo "Public tree ready in $OUT (HANDOVER.md and docs/ excluded, references scrubbed)."
 echo
-echo "Publish it with (SSH push remote; add ~/.ssh/id_ed25519.pub to GitHub first):"
-echo "  cd $OUT"
-echo "  git init -b main && git add -A && git commit -m 'ism-mcp $TAG'"
-echo "  git remote add origin $PUSH_URL"
-echo "  git push -u origin main"
+echo "Publish it as a commit on top of the public history (SSH push remote):"
+echo "  git clone $PUSH_URL /tmp/ism-mcp-public"
+echo "  rsync -a --delete --exclude .git $OUT/ /tmp/ism-mcp-public/"
+echo "  cd /tmp/ism-mcp-public && git add -A && git commit -m 'ism-mcp $TAG'"
+echo "  git push origin main"
 echo "  git tag -a $TAG -m 'ism-mcp $TAG' && git push origin $TAG"
