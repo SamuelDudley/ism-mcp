@@ -86,12 +86,12 @@ print('controls:', store.count_controls(conn))
 Expected output (numbers grow as ASD publishes more releases):
 
 ```
-versions: 24
-active:   2026.03.24
-controls: 1130
+versions: 25
+active:   2026.06.18
+controls: 1150
 ```
 
-A real Dec-2025 to Mar-2026 diff via `server.ism_diff()` reports roughly: 27 added, 4 removed, 45 reworded, 11 retitled, 37 moved. `server.ism_history('ism-0714')` spans all 24 releases. CI prints `==> CI OK`. Slow suite: `./scripts/ci.sh slow`.
+A real Mar-2026 to Jun-2026 diff via `server.ism_diff()` reports: 20 added, 0 removed, 122 reworded, 1 retitled, 149 moved. `server.ism_history('ism-0714')` spans all 25 releases. CI prints `==> CI OK`. Slow suite: `./scripts/ci.sh slow`.
 
 ## Next action
 
