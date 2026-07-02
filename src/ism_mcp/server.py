@@ -99,7 +99,11 @@ def _conn() -> sqlite3.Connection:
 def ism_get(identifier: str, version: str | None = None) -> str:
     """Get the full record for one ISM control by identifier (e.g. `ism-1781`).
 
-    Defaults to the active ISM version. Pass `version` (see ism_versions) for a historical one.
+    Identifier input is tolerant: `ISM-1781`, bare `1781`, and legacy labels resolve to
+    the canonical OSCAL id. Returns the control as JSON, or `{"error": ...}` when no
+    control matches. Use ism_search or ism_applicable first when the identifier is
+    unknown. Defaults to the active ISM version. Pass `version` (see ism_versions)
+    for a historical one.
     """
     conn = _conn()
     c = store.get_control(conn, identifier, version=version)
@@ -658,9 +662,12 @@ def ism_coverage_gaps(
 ) -> str:
     """Return outstanding in-scope controls (uncurated, partial, deferred). Never writes.
 
-    If `work` is supplied, runs `ism_applicable` with the project's scope as filters
-    and intersects with the manifest to return work-relevant gaps ranked by score.
-    Without `work`, returns the full outstanding set ordered uncurated > partial > deferred.
+    The complement of ism_coverage_read: read reports what is curated, gaps reports
+    what is missing. Reads the manifest (`.ism-coverage.toml`), walking up from cwd
+    when `project_path` is omitted. If `work` is supplied, runs `ism_applicable` with
+    the project's scope as filters and intersects with the manifest to return
+    work-relevant gaps ranked by relevance score. Without `work`, returns the full
+    outstanding set ordered uncurated > partial > deferred.
     """
     path, err = _find_manifest_or_error(project_path)
     if err is not None:
