@@ -1,6 +1,6 @@
 # Next-Session Handover
 
-> Last updated: 2026-07-02 (v2.0.2, Glama listing hardening). Read this first when picking up the project.
+> Last updated: 2026-07-03 (v2.1, typed datamodel and structured outputs). Read this first when picking up the project.
 
 ## What this is
 
@@ -26,9 +26,9 @@ Canonical identifiers are the OSCAL ids (`ism-1001`, `ism-principle-gov-01`). Lo
 
 Embeddings are `bge-small-en-v1.5` via `fastembed`, keyed by `(version, identifier)`. `ingest-history` embeds only the newest (active) version by default to keep the history walk fast; `--embed-all` embeds every version.
 
-Test suite: 236 fast tests plus 3 opt-in slow tests behind `./scripts/ci.sh slow`. `openpyxl` and `pdfplumber` are removed; OSCAL is parsed with stdlib `json` and `fetch.py` shells out to `git`.
+Test suite: 257 fast tests plus 3 opt-in slow tests behind `./scripts/ci.sh slow`. `openpyxl` and `pdfplumber` are removed; OSCAL is parsed with stdlib `json` and `fetch.py` shells out to `git`.
 
-All tools carry MCP `ToolAnnotations` (`readOnlyHint` etc.). `ism_coverage_upsert` is the only tool that writes. Tool docstrings state read/write behaviour and how to choose between `ism_search` (keyword) and `ism_applicable` (free-text ranking). `glama.json` at the repo root names the maintainer for the Glama MCP directory listing (`https://glama.ai/mcp/servers/SamuelDudley/ism-mcp`).
+All 17 tools are fully typed (v2.1). Returns are TypedDicts from `models.py`, so every tool publishes a real MCP `outputSchema` and emits `structuredContent`. Constrained inputs (`classification`, `maturity`, `status`, `change_types`, `status_filter`) are `Literal` enums rejected at the MCP layer. Failures raise `ToolError` (clients see `isError` with a message), never `{"error": ...}` payloads. Response keys are never conditionally absent: unpopulated conditionals are explicit nulls (design doc: `docs/superpowers/specs/2026-07-02-typed-datamodel-design.md`). All tools carry MCP `ToolAnnotations` (`readOnlyHint` etc.) and `ism_coverage_upsert` is the only tool that writes. `glama.json` at the repo root names the maintainer for the Glama MCP directory listing (`https://glama.ai/mcp/servers/SamuelDudley/ism-mcp`).
 
 ## Repository layout
 
@@ -36,6 +36,7 @@ All tools carry MCP `ToolAnnotations` (`readOnlyHint` etc.). `ism_coverage_upser
 src/ism_mcp/
   __init__.py
   __main__.py        CLI: fetch, ingest, ingest-history, update, serve, install
+  models.py          vocabulary literals + response TypedDicts for the MCP tools
   store.py           version-keyed SQLite schema + queries + FTS5 + version registry
   oscal.py           parse an OSCAL ISM catalog into version metadata and control rows
   fetch.py           clone/pull the ACSC ism-oscal mirror, list tags, read files at a tag
@@ -95,7 +96,7 @@ A real Mar-2026 to Jun-2026 diff via `server.ism_diff()` reports: 20 added, 0 re
 
 ## Next action
 
-`pyproject` is at `2.0.2`. Public releases `v2.0`, `v2.0.1`, and `v2.0.2` are tagged on `https://github.com/samueldudley/ism-mcp`. Publishing is now additive: the release script prints clone/rsync/commit/tag commands that stack a snapshot commit on top of the public history (no re-init, no force push). GitHub Actions on the public repo is green as of v2.0.2 (a pyright literal-type error in `tests/test_coverage_canonical.py` had CI red from v2.0.1 to v2.0.2).
+`pyproject` is at `2.1.0`. Public releases `v2.0`, `v2.0.1`, `v2.0.2`, and `v2.1` are tagged on `https://github.com/samueldudley/ism-mcp`. Publishing is additive: the release script prints clone/rsync/commit/tag commands that stack a snapshot commit on top of the public history (no re-init, no force push). The v2.1 tag also exists on the private file origin so local uvx pins resolve.
 
 One manual step is pending on the Glama directory listing (`https://glama.ai/mcp/servers/SamuelDudley/ism-mcp`): the owner must claim the server by signing into Glama with GitHub, which also triggers a re-index (their snapshot predates the version/diff/history tools).
 
@@ -110,6 +111,7 @@ Next development work is sub-project C (Graph and curated cuts). Open `docs/supe
 | done | D: Project coverage manifest | `.ism-coverage.toml`, `ism_coverage_read/upsert/gaps`. |
 | done | E: Consumer install helper | `ism-mcp install --project PATH`, uvx and docker modes. |
 | done | Multi-version OSCAL | OSCAL ingest, version history, `ism_versions/diff/history`, coverage drift, dropped XLSX/PDF. |
+| done | Typed datamodel | TypedDict returns with outputSchema/structuredContent, Literal input enums, ToolError failures, null-not-absent conditionals. |
 | next | C: Graph and curated cuts | `ism_neighbors(id)`, `ism_essential8(level)`, `ism_subset(name)`. Needs brainstorm. |
 
 Deferred (revisit when consumers ask): reworded cosine-similarity scoring in `ism_diff`, possible-rename heuristic, HTTP/SSE transport, PyPI publish, coverage gate in CI.
@@ -145,4 +147,4 @@ See `CLAUDE.md` for the canonical list. Highlights:
 3. Run the verification block in "Verifying current state" above.
 4. Follow "Next action": brainstorm sub-project C from `docs/superpowers/specs/2026-05-28-ism-mcp-buildout-vision.md`.
 
-Branch state: `main` is up to date with `origin` and all feature branches are merged and deleted. The public repo `samueldudley/ism-mcp` is at v2.0.2.
+Branch state: `main` is up to date with `origin` and all feature branches are merged and deleted. The public repo `samueldudley/ism-mcp` is at v2.1.
