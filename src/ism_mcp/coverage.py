@@ -10,9 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-Status = Literal["covered", "partial", "not-applicable", "deferred"]
+from .models import Status
 
 
 @dataclass(frozen=True)
