@@ -60,8 +60,10 @@ def test_gaps_without_work_returns_all_outstanding(tmp_path):
     assert result["total_outstanding"] == 2
     assert result["gaps"][0]["current_status"] == "uncurated"
     assert result["gaps"][1]["current_status"] == "partial"
-    assert "current_entry" in result["gaps"][1]
-    assert "current_entry" not in result["gaps"][0]
+    assert result["gaps"][1]["current_entry"] is not None
+    assert result["gaps"][0]["current_entry"] is None
+    assert result["gaps"][0]["score"] is None
+    assert result["gaps"][0]["why"] is None
 
 
 def test_gaps_ordering_uncurated_then_partial_then_deferred(tmp_path):

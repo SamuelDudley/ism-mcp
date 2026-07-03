@@ -90,6 +90,30 @@ def test_compute_impact_buckets():
     )
     assert {e["identifier"] for e in out["re_review"]} == {"ism-0001"}
     assert out["re_review"][0]["changes"] == ["reworded"]
+    assert out["re_review"][0]["diff"] is not None
     assert {e["identifier"] for e in out["removed_upstream"]} == {"ism-0003"}
     assert {e["identifier"] for e in out["new_uncovered"]} == {"ism-0009"}
     assert out["summary"]["still_valid"] == 1
+
+
+def test_impact_non_reworded_change_has_null_diff():
+    old = _ctl("2025.12.9", "ism-0001")
+    new = _ctl(
+        "2026.03.24",
+        "ism-0001",
+        applies={"NC": False, "OS": True, "P": True, "S": True, "TS": True},
+    )
+
+    def lookup(version, identifier):
+        return {"2025.12.9": old, "2026.03.24": new}.get(version)
+
+    out = coverage.compute_impact(
+        manifest=_manifest([_entry("ism-0001")]),
+        target_version="2026.03.24",
+        lookup=lookup,
+        in_scope_target=[new],
+        changed_fields=diff.changed_fields,
+        diff_text=diff.unified_diff,
+    )
+    assert out["re_review"][0]["changes"] == ["applicability_changed"]
+    assert out["re_review"][0]["diff"] is None

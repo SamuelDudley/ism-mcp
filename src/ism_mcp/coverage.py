@@ -328,18 +328,18 @@ def compute_gaps(
         )
         gaps = []
         for c in candidates:
-            status = _current_status(c.identifier)
-            gap: dict = {
-                "identifier": c.identifier,
-                "topic": c.topic,
-                "section": c.section,
-                "description": c.description,
-                "current_status": status,
-            }
-            ce = _current_entry(c.identifier)
-            if ce is not None:
-                gap["current_entry"] = ce
-            gaps.append(gap)
+            gaps.append(
+                {
+                    "identifier": c.identifier,
+                    "topic": c.topic,
+                    "section": c.section,
+                    "description": c.description,
+                    "current_status": _current_status(c.identifier),
+                    "current_entry": _current_entry(c.identifier),
+                    "score": None,
+                    "why": None,
+                }
+            )
         total = len(gaps)
         return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
 
@@ -352,20 +352,18 @@ def compute_gaps(
         if ident not in by_id:
             continue  # outside scope
         c = by_id[ident]
-        status = _current_status(ident)
-        gap = {
-            "identifier": ident,
-            "topic": c.topic,
-            "section": c.section,
-            "description": c.description,
-            "current_status": status,
-            "score": entry.get("score"),
-            "why": entry.get("why"),
-        }
-        ce = _current_entry(ident)
-        if ce is not None:
-            gap["current_entry"] = ce
-        gaps.append(gap)
+        gaps.append(
+            {
+                "identifier": ident,
+                "topic": c.topic,
+                "section": c.section,
+                "description": c.description,
+                "current_status": _current_status(ident),
+                "current_entry": _current_entry(ident),
+                "score": entry.get("score"),
+                "why": entry.get("why"),
+            }
+        )
     total = len(gaps)
     return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
 
@@ -412,16 +410,17 @@ def compute_impact(
         old = lookup(against, ident)
         fields = changed_fields(old, target) if old is not None else []
         if fields:
-            item = {
-                "identifier": ident,
-                "status": entry.status,
-                "reviewed_against": against,
-                "changes": fields,
-                "how_met": entry.how_met,
-            }
-            if old is not None and "reworded" in fields:
-                item["diff"] = diff_text(old.description, target.description)
-            re_review.append(item)
+            reworded = old is not None and "reworded" in fields
+            re_review.append(
+                {
+                    "identifier": ident,
+                    "status": entry.status,
+                    "reviewed_against": against,
+                    "changes": fields,
+                    "how_met": entry.how_met,
+                    "diff": diff_text(old.description, target.description) if reworded else None,
+                }
+            )
         else:
             still_valid += 1
 
