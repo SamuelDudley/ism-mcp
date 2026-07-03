@@ -282,23 +282,22 @@ def ism_list_maturities() -> models.MaturityVocab:
 def ism_diff(
     from_version: str | None = None,
     to_version: str | None = None,
-    change_types: list[str] | None = None,
-) -> str:
+    change_types: list[models.ChangeType] | None = None,
+) -> models.DiffResult:
     """Catalog delta between two ISM versions.
 
     Defaults compare the version before active (from) to the active version (to), so a
     bare call answers 'what changed in the latest release'. `change_types` narrows the
     buckets (added, removed, reworded, retitled, moved, applicability_changed,
-    maturity_changed). Returns `{from, to, summary, changes}`. Unknown versions return
-    `{"error": ...}`. Use ism_versions to see loadable versions, and ism_history for
-    one control's timeline instead of the whole catalog.
+    maturity_changed) and sets unrequested buckets to null. Returns
+    `{from, to, summary, changes}`. Fails on unknown versions. Use ism_versions to see
+    loadable versions, and ism_history for one control's timeline instead of the
+    whole catalog.
     """
     conn = _conn()
     versions = [v["version"] for v in store.list_versions(conn)]  # newest first
     if len(versions) < 2 and (from_version is None or to_version is None):
-        return json.dumps(
-            {"error": "need two versions to diff", "hint": "load history with ingest-history"}
-        )
+        raise ToolError("need two versions to diff. load history with ingest-history")
     to_v = to_version or store.get_active_version(conn) or versions[0]
     if from_version is not None:
         from_v = from_version
@@ -306,22 +305,23 @@ def ism_diff(
         later = [v for v in versions if v < to_v]
         from_v = later[0] if later else None
     if from_v is None:
-        return json.dumps({"error": "no earlier version to compare against to_version"})
+        raise ToolError("no earlier version to compare against to_version")
     for v in (from_v, to_v):
         if store.get_version(conn, v) is None:
-            return json.dumps({"error": f"no such version: {v}", "hint": "call ism_versions"})
+            raise ToolError(f"no such version: {v}. call ism_versions")
 
     result = diff.diff_controls(store.list_controls(conn, from_v), store.list_controls(conn, to_v))
+    summary = dict(result["summary"])
+    changes = dict(result["changes"])
     if change_types:
-        result = {
-            "summary": {k: v for k, v in result["summary"].items() if k in change_types},
-            "changes": {k: v for k, v in result["changes"].items() if k in change_types},
-        }
-    return json.dumps({"from": from_v, "to": to_v, **result}, indent=2)
+        keep = set(change_types)
+        summary = {k: (v if k in keep else None) for k, v in summary.items()}
+        changes = {k: (v if k in keep else None) for k, v in changes.items()}
+    return {"from": from_v, "to": to_v, "summary": summary, "changes": changes}  # type: ignore[typeddict-item]
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_history(identifier: str) -> str:
+def ism_history(identifier: str) -> models.HistoryResult:
     """Show one control's evolution across every loaded ISM version.
 
     Returns a chronological timeline of changes to that single control. Identifier
@@ -338,15 +338,16 @@ def ism_history(identifier: str) -> str:
         if canon is not None:
             break
     if canon is None:
-        return json.dumps(
-            {
-                "identifier": identifier,
-                "timeline": [],
-                "hint": "no control with that id in any version",
-            }
-        )
+        return {
+            "identifier": identifier,
+            "first_seen": None,
+            "last_seen": None,
+            "timeline": [],
+            "hint": "no control with that id in any version",
+        }
     by_version = {v: store.get_control(conn, canon, version=v) for v in order}
-    return json.dumps(diff.build_history(canon, order, by_version), indent=2)
+    history = diff.build_history(canon, order, by_version)
+    return {**history, "hint": None}  # type: ignore[typeddict-item]
 
 
 @mcp.tool(annotations=READ_ONLY)
