@@ -11,10 +11,11 @@ from datetime import date as _date
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from . import classification as cls
-from . import coverage, diff, retrieve, store
+from . import coverage, diff, models, retrieve, store
 from . import paths as repo_paths
 from .embed import DeterministicHashEmbedder, Embedder, FastEmbedEmbedder
 
@@ -106,25 +107,25 @@ def _conn() -> sqlite3.Connection:
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_get(identifier: str, version: str | None = None) -> str:
+def ism_get(identifier: str, version: str | None = None) -> models.ControlRecord:
     """Get the full record for one ISM control by identifier (e.g. `ism-1781`).
 
     Identifier input is tolerant: `ISM-1781`, bare `1781`, and legacy labels resolve
-    to the canonical OSCAL id. Returns JSON with title, control text, section, topic,
-    classification applicability, and Essential Eight maturity flags, or
-    `{"error": ...}` when nothing matches. Use ism_search or ism_applicable first
-    when the identifier is unknown. Defaults to the active ISM version. Pass
-    `version` (see ism_versions) for a historical one.
+    to the canonical OSCAL id. Returns the control record with title, control text,
+    section, topic, classification applicability, and Essential Eight maturity flags.
+    Fails when nothing matches. Use ism_search or ism_applicable first when the
+    identifier is unknown. Defaults to the active ISM version. Pass `version` (see
+    ism_versions) for a historical one.
     """
     conn = _conn()
     c = store.get_control(conn, identifier, version=version)
     if c is None:
-        return json.dumps({"error": f"no such control: {identifier}"})
-    return json.dumps(c.as_dict(), indent=2)
+        raise ToolError(f"no such control: {identifier}")
+    return c.as_dict()
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
+def ism_search(query: str, limit: int = 10, version: str | None = None) -> models.SearchResult:
     """Full-text keyword search (FTS5 BM25) over ISM control text and topics.
 
     Best when you already know the terms, an exact phrase, or part of a control title.
@@ -135,38 +136,34 @@ def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
     """
     conn = _conn()
     results = store.search(conn, query, limit=_clamp_limit(limit), version=version)
-    return json.dumps(
-        {"query": query, "count": len(results), "results": [c.as_dict() for c in results]},
-        indent=2,
-    )
+    return {"query": query, "count": len(results), "results": [c.as_dict() for c in results]}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_by_classification(classification: str, version: str | None = None) -> str:
+def ism_list_by_classification(
+    classification: models.Classification, version: str | None = None
+) -> models.ClassificationControls:
     """List controls that apply at a given classification level.
 
     `classification` takes canonical abbreviations only: NC, OS, P, S, or TS (see
     ism_list_classifications for the OFFICIAL through TOP_SECRET mapping). Returns
     `{classification, count, identifiers}` with ids only. Fetch full records with
-    ism_get. An unknown level returns `{"error": ...}`.
+    ism_get. An unknown level fails.
     """
     conn = _conn()
     try:
         results = store.list_by_classification(conn, classification, version=version)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
-    return json.dumps(
-        {
-            "classification": classification.upper(),
-            "count": len(results),
-            "identifiers": [c.identifier for c in results],
-        },
-        indent=2,
-    )
+        raise ToolError(str(e)) from e
+    return {
+        "classification": classification,
+        "count": len(results),
+        "identifiers": [c.identifier for c in results],
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_topics(version: str | None = None) -> str:
+def ism_list_topics(version: str | None = None) -> models.TopicsList:
     """List all distinct topic strings present in the ISM.
 
     The vocabulary for the `topic` argument of ism_list_by_topic. Returns
@@ -174,11 +171,11 @@ def ism_list_topics(version: str | None = None) -> str:
     """
     conn = _conn()
     topics = store.list_topics(conn, version=version)
-    return json.dumps({"count": len(topics), "topics": topics}, indent=2)
+    return {"count": len(topics), "topics": topics}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_by_topic(topic: str, version: str | None = None) -> str:
+def ism_list_by_topic(topic: str, version: str | None = None) -> models.TopicControls:
     """List controls under a specific topic (exact match, use ism_list_topics to enumerate).
 
     Returns `{topic, count, identifiers}` with ids only. Fetch full records with
@@ -186,14 +183,11 @@ def ism_list_by_topic(topic: str, version: str | None = None) -> str:
     """
     conn = _conn()
     results = store.list_by_topic(conn, topic, version=version)
-    return json.dumps(
-        {"topic": topic, "count": len(results), "identifiers": [c.identifier for c in results]},
-        indent=2,
-    )
+    return {"topic": topic, "count": len(results), "identifiers": [c.identifier for c in results]}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_stats() -> str:
+def ism_stats() -> models.Stats:
     """Report database state: active ISM version, version and control counts, db path.
 
     Takes no arguments. Useful as a first call to confirm data is ingested and see
@@ -203,21 +197,18 @@ def ism_stats() -> str:
     conn = _conn()
     active = store.get_active_version(conn)
     row = store.get_version(conn, active) if active else None
-    return json.dumps(
-        {
-            "active_version": active,
-            "versions": len(store.list_versions(conn)),
-            "controls": store.count_controls(conn) if active else 0,
-            "oscal_version": row["oscal_version"] if row else None,
-            "git_tag": row["git_tag"] if row else None,
-            "db_path": str(_active_db()),
-        },
-        indent=2,
-    )
+    return {
+        "active_version": active,
+        "versions": len(store.list_versions(conn)),
+        "controls": store.count_controls(conn) if active else 0,
+        "oscal_version": row["oscal_version"] if row else None,
+        "git_tag": row["git_tag"] if row else None,
+        "db_path": str(_active_db()),
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_versions() -> str:
+def ism_versions() -> models.VersionsResult:
     """List loaded ISM versions, newest first. The vocabulary for version/from/to arguments.
 
     Returns `{active, count, versions}` where each entry carries version, label,
@@ -227,62 +218,56 @@ def ism_versions() -> str:
     conn = _conn()
     active = store.get_active_version(conn)
     versions = store.list_versions(conn)
-    return json.dumps(
-        {
-            "active": active,
-            "count": len(versions),
-            "versions": [
-                {
-                    "version": v["version"],
-                    "label": v["label"],
-                    "published": v["published"],
-                    "control_count": v["control_count"],
-                    "git_tag": v["git_tag"],
-                    "is_active": v["version"] == active,
-                }
-                for v in versions
-            ],
-        },
-        indent=2,
-    )
+    return {
+        "active": active,
+        "count": len(versions),
+        "versions": [
+            {
+                "version": v["version"],
+                "label": v["label"],
+                "published": v["published"],
+                "control_count": v["control_count"],
+                "git_tag": v["git_tag"],
+                "is_active": v["version"] == active,
+            }
+            for v in versions
+        ],
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_sections(version: str | None = None) -> str:
+def ism_list_sections(version: str | None = None) -> models.SectionsList:
     """List the distinct ISM Section values, the vocabulary for the `tags` filter on ism_applicable.
 
     Returns `{count, sections}` for the active version unless `version` is passed.
     """
     conn = _conn()
     sections = store.list_sections(conn, version=version)
-    return json.dumps({"count": len(sections), "sections": sections}, indent=2)
+    return {"count": len(sections), "sections": sections}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_classifications() -> str:
+def ism_list_classifications() -> models.ClassificationVocab:
     """Return the classification vocabulary as parallel lists.
 
     `canonical[i]` (NC, OS, P, S, TS) pairs with `friendly[i]` (OFFICIAL through
     TOP_SECRET). ism_applicable accepts either form. ism_list_by_classification
     accepts canonical only. Static data, no database read.
     """
-    return json.dumps(
-        {
-            "canonical": ["NC", "OS", "P", "S", "TS"],
-            "friendly": [
-                "OFFICIAL",
-                "OFFICIAL:Sensitive",
-                "PROTECTED",
-                "SECRET",
-                "TOP_SECRET",
-            ],
-        },
-        indent=2,
-    )
+    return {
+        "canonical": ["NC", "OS", "P", "S", "TS"],
+        "friendly": [
+            "OFFICIAL",
+            "OFFICIAL:Sensitive",
+            "PROTECTED",
+            "SECRET",
+            "TOP_SECRET",
+        ],
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_maturities() -> str:
+def ism_list_maturities() -> models.MaturityVocab:
     """Return the Essential Eight maturity levels: ML1, ML2, ML3.
 
     The Essential Eight is the ASD's baseline set of mitigation strategies, and only
@@ -290,7 +275,7 @@ def ism_list_maturities() -> str:
     for the `maturity` filter on ism_applicable and for coverage manifest scope.
     Static data, no database read.
     """
-    return json.dumps({"maturities": ["ML1", "ML2", "ML3"]}, indent=2)
+    return {"maturities": ["ML1", "ML2", "ML3"]}
 
 
 @mcp.tool(annotations=READ_ONLY)

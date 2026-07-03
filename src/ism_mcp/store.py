@@ -10,6 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .models import ControlRecord
+
 _FTS_WORD = re.compile(r"\w+", re.UNICODE)
 _ID_DIGITS = re.compile(r"\d+")
 
@@ -108,7 +110,7 @@ class Control:
     applies: dict[str, bool]
     maturity: dict[str, bool]
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> ControlRecord:
         return {
             "version": self.version,
             "identifier": self.identifier,
@@ -122,8 +124,8 @@ class Control:
             "control_revision": self.control_revision,
             "updated": self.updated,
             "sort_id": self.sort_id,
-            "applies": dict(self.applies),
-            "maturity": dict(self.maturity),
+            "applies": dict(self.applies),  # type: ignore[typeddict-item]
+            "maturity": dict(self.maturity),  # type: ignore[typeddict-item]
         }
 
 

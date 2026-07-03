@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from ism_mcp import server, store
 from ism_mcp.embed import DeterministicHashEmbedder
@@ -75,7 +76,7 @@ def single_version_db(tmp_path, sample_controls, monkeypatch):
 
 
 def test_ism_versions_lists_active_first(two_version_db):
-    out = json.loads(server.ism_versions())
+    out = server.ism_versions()
     assert out["active"] == "2026.03.24"
     assert out["count"] == 2
     assert out["versions"][0]["version"] == "2026.03.24"
@@ -83,21 +84,21 @@ def test_ism_versions_lists_active_first(two_version_db):
 
 
 def test_ism_stats_reports_active_version(two_version_db):
-    out = json.loads(server.ism_stats())
+    out = server.ism_stats()
     assert out["active_version"] == "2026.03.24"
     assert out["versions"] == 2
     assert out["controls"] == 3
 
 
 def test_ism_get_defaults_to_active_and_accepts_version(two_version_db):
-    active = json.loads(server.ism_get("ism-9003"))
+    active = server.ism_get("ism-9003")
     assert active["version"] == "2026.03.24"
-    missing = json.loads(server.ism_get("ism-9003", version="2025.12.9"))
-    assert "error" in missing
+    with pytest.raises(ToolError, match="no such control"):
+        server.ism_get("ism-9003", version="2025.12.9")
 
 
 def test_ism_get_tolerant_identifier(two_version_db):
-    out = json.loads(server.ism_get("ISM-9001"))
+    out = server.ism_get("ISM-9001")
     assert out["identifier"] == "ism-9001"
 
 
