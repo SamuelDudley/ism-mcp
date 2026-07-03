@@ -27,6 +27,7 @@ baseline_version = "2026.03.24"
 status = "covered"
 how_met = "Network is encrypted."
 last_reviewed = 2026-05-28
+reviewed_against = "2025.12.9"
 """
 
 TOOL_NAMES = [
@@ -54,11 +55,21 @@ TOOL_NAMES = [
 def two_version_db(tmp_path, sample_controls, monkeypatch):
     db_path = tmp_path / "ism.db"
     conn = store.open_db(db_path)
-    old = [
-        store.Control(**{**c.__dict__, "version": V_OLD})
-        for c in sample_controls
-        if c.identifier != "ism-9003"
-    ]
+    old = []
+    for c in sample_controls:
+        if c.identifier == "ism-9003":
+            continue
+        fields = {**c.__dict__, "version": V_OLD}
+        if c.identifier == "ism-9001":
+            fields["title"] = "Old title: ism-9001"
+        if c.identifier == "ism-9002":
+            fields["section"] = "Legacy"
+            fields["topic"] = "Old sessions"
+            fields["guideline"] = "Old guidelines"
+            fields["description"] = "Sessions are terminated after sixty minutes."
+            fields["applies"] = {"NC": True, "OS": True, "P": True, "S": True, "TS": True}
+            fields["maturity"] = {"ML1": False, "ML2": True, "ML3": True}
+        old.append(store.Control(**fields))
     store.insert_controls(conn, old)
     store.insert_controls(conn, sample_controls)
     for version, count in ((V_OLD, len(old)), (V_NEW, len(sample_controls))):
@@ -166,6 +177,12 @@ def test_wire_diff_and_history_round_trip(two_version_db):
     assert res.isError is False
     assert res.structuredContent == server.ism_diff()
     assert _sc(res)["from"] == V_OLD
+    changes = _sc(res)["changes"]
+    assert changes["retitled"][0]["from"] == "Old title: ism-9001"
+    assert changes["moved"][0]["from"]["section"] == "Legacy"
+    assert changes["reworded"][0]["diff"]
+    assert set(changes["applicability_changed"][0]["removed"]) == {"S", "TS"}
+    assert changes["maturity_changed"][0]["added"] == ["ML1"]
     filtered = _wire_call("ism_diff", {"change_types": ["added"]})
     assert filtered.isError is False
     assert _sc(filtered)["changes"]["reworded"] is None
@@ -191,10 +208,15 @@ def test_wire_coverage_family_round_trips(project_dir):
     assert res.isError is False
     gaps = _sc(res)
     assert gaps == server.ism_coverage_gaps()
-    assert all("score" in g and "current_entry" in g for g in gaps["gaps"])
+    assert gaps["gaps"][0]["identifier"] == "ism-9003"
+    assert gaps["gaps"][0]["current_entry"] is None
+    assert gaps["gaps"][0]["score"] is None
     res = _wire_call("ism_coverage_impact", {})
     assert res.isError is False
     assert res.structuredContent == server.ism_coverage_impact()
+    impact = _sc(res)
+    assert impact["re_review"][0]["changes"] == ["retitled"]
+    assert impact["re_review"][0]["diff"] is None
     res = _wire_call(
         "ism_coverage_upsert",
         {"identifier": "ism-9002", "status": "covered", "how_met": "done"},
@@ -213,6 +235,12 @@ def test_wire_out_of_enum_input_is_rejected(two_version_db):
         {"identifier": "ism-9001", "status": "bogus", "how_met": "x"},
     )
     assert res.isError is True
+    res = _wire_call("ism_applicable", {"work": "x", "maturity": "2"})
+    assert res.isError is True
+    assert "unknown maturity" not in _text(res)
+    res = _wire_call("ism_diff", {"change_types": ["renamed"]})
+    assert res.isError is True
+    assert "no such version" not in _text(res)
 
 
 def test_wire_tool_error_reaches_client_as_is_error(two_version_db):

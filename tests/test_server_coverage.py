@@ -198,8 +198,8 @@ def test_coverage_gaps_with_work_intersects_with_applicable(
     ids = [g["identifier"] for g in result["gaps"]]
     assert "ism-9003" in ids
     g = next(g for g in result["gaps"] if g["identifier"] == "ism-9003")
-    assert "score" in g
-    assert "why" in g
+    assert g["score"] is not None
+    assert g["why"] is not None
 
 
 def test_coverage_gaps_returns_error_when_manifest_missing(
