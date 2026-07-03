@@ -6,13 +6,13 @@ import contextlib
 import os
 import tempfile
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .models import Status
+from .models import RankedControlRef, Status
 
 
 @dataclass(frozen=True)
@@ -101,6 +101,13 @@ def _entry_from_dict(identifier: str, body: dict) -> ManifestEntry:
     for required in ("status", "how_met"):
         if required not in body:
             raise ValueError(f"{identifier}: missing required key {required!r}")
+    for key in ("status", "how_met", "reviewed_against", "reviewed_by"):
+        value = body.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{identifier}: {key} must be a string, got {value!r}")
+    for key in ("files", "commits"):
+        if any(not isinstance(item, str) for item in body.get(key) or []):
+            raise ValueError(f"{identifier}: {key} entries must be strings")
     last_reviewed = body.get("last_reviewed")
     if not isinstance(last_reviewed, date):
         raise ValueError(f"{identifier}: last_reviewed must be a TOML date, got {last_reviewed!r}")
@@ -285,7 +292,7 @@ _STATUS_PRIORITY = {"uncurated": 0, "partial": 1, "deferred": 2}
 def compute_gaps(
     manifest: Manifest,
     in_scope: list,
-    applicable: Sequence[Mapping[str, Any]] | None = None,
+    applicable: Sequence[RankedControlRef] | None = None,
     limit: int = 50,
     canonical: Callable[[str], str] | None = None,
 ) -> dict:

@@ -134,3 +134,30 @@ def test_read_manifest_warns_when_attachment_escapes_root(tmp_path):
     path.write_text(toml)
     m = read_manifest(path)
     assert any("escapes project root" in w for w in m.warnings), m.warnings
+
+
+def test_read_manifest_non_string_scalar_raises_valueerror():
+    bad = (
+        'schema_version = 1\n\n[controls."ism-0428"]\nstatus = "covered"\n'
+        'how_met = "x"\nlast_reviewed = 2026-05-28\nreviewed_against = 2025.12\n'
+    )
+    with pytest.raises(ValueError, match="reviewed_against must be a string"):
+        read_manifest_text(bad, Path("/x/.ism-coverage.toml"))
+
+
+def test_read_manifest_non_string_how_met_raises_valueerror():
+    bad = (
+        'schema_version = 1\n\n[controls."ism-0428"]\nstatus = "covered"\n'
+        "how_met = 3\nlast_reviewed = 2026-05-28\n"
+    )
+    with pytest.raises(ValueError, match="how_met must be a string"):
+        read_manifest_text(bad, Path("/x/.ism-coverage.toml"))
+
+
+def test_read_manifest_non_string_file_entry_raises_valueerror():
+    bad = (
+        'schema_version = 1\n\n[controls."ism-0428"]\nstatus = "covered"\n'
+        'how_met = "x"\nlast_reviewed = 2026-05-28\nfiles = [1]\n'
+    )
+    with pytest.raises(ValueError, match="files entries must be strings"):
+        read_manifest_text(bad, Path("/x/.ism-coverage.toml"))

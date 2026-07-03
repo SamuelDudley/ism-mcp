@@ -232,6 +232,12 @@ class ApplicableEntry(TypedDict):
     guideline: str | None
 
 
+class RankedControlRef(TypedDict):
+    identifier: str
+    score: float
+    why: list[str]
+
+
 class ApplicableResult(TypedDict):
     query: str
     filters: AppliedFilters
