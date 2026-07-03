@@ -353,13 +353,13 @@ def ism_history(identifier: str) -> models.HistoryResult:
 @mcp.tool(annotations=READ_ONLY)
 def ism_applicable(
     work: str,
-    classification: str | None = None,
-    maturity: str | None = None,
+    classification: models.ClassificationInput | None = None,
+    maturity: models.Maturity | None = None,
     tags: list[str] | None = None,
     paths: list[str] | None = None,
     limit: int = 20,
     verbose: bool = False,
-) -> str:
+) -> models.ApplicableResult:
     """Rank ISM controls relevant to a free-text description of planned or current work.
 
     The primary discovery tool. Describe the work in a sentence or two and it returns
@@ -369,10 +369,22 @@ def ism_applicable(
     TOP_SECRET), maturity (ML1|ML2|ML3, Essential Eight controls only, so leave it
     unset unless scoping to the Essential Eight), tags (validated against
     ism_list_sections), paths (repo paths whose tokens expand the lexical query).
-    Invalid filter values return `{"error": ...}`. `limit` defaults to 20 (capped at
-    200). `verbose` adds each control's guideline text to the results. `score` is a
-    normalised RRF score in [0.0, 1.0], not a probability.
+    Invalid filter values fail. `limit` defaults to 20 (capped at 200). `verbose`
+    populates each control's guideline text, null otherwise. `score` is a normalised
+    RRF score in [0.0, 1.0], not a probability.
     """
+    return _applicable_result(work, classification, maturity, tags, paths, limit, verbose)
+
+
+def _applicable_result(
+    work: str,
+    classification: str | None = None,
+    maturity: str | None = None,
+    tags: list[str] | None = None,
+    paths: list[str] | None = None,
+    limit: int = 20,
+    verbose: bool = False,
+) -> models.ApplicableResult:
     conn = _conn()
 
     try:
@@ -380,20 +392,18 @@ def ism_applicable(
             cls.normalise_classification(classification) if classification else None
         )
     except ValueError as e:
-        return json.dumps({"error": f"classification: {e}"})
+        raise ToolError(f"classification: {e}") from e
 
     try:
         norm_maturity = cls.normalise_maturity(maturity) if maturity else None
     except ValueError as e:
-        return json.dumps({"error": f"maturity: {e}"})
+        raise ToolError(f"maturity: {e}") from e
 
     valid_sections = set(store.list_sections(conn))
     if tags:
         unknown = [t for t in tags if t not in valid_sections]
         if unknown:
-            return json.dumps(
-                {"error": f"unknown tags: {unknown}. Use ism_list_sections() to discover."}
-            )
+            raise ToolError(f"unknown tags: {unknown}. Use ism_list_sections() to discover.")
 
     expanded_terms, matched_path_tokens = repo_paths.expand_paths(paths or [])
     lexical_query = " ".join([work, *sorted(expanded_terms)]) if expanded_terms else work
@@ -420,24 +430,25 @@ def ism_applicable(
     matches = _apply_filters(matches, norm_classification, norm_maturity, tags)
     matches = matches[: _clamp_limit(limit)]
 
-    response: dict = {
+    hint = None
+    if not matches and candidates_before_filter > 0:
+        hint = (
+            f"filters eliminated {candidates_before_filter} candidates. "
+            "Relax classification, maturity, or tags."
+        )
+    return {
         "query": work,
         "filters": {
-            "classification": norm_classification,
-            "maturity": norm_maturity,
+            "classification": norm_classification,  # type: ignore[typeddict-item]
+            "maturity": norm_maturity,  # type: ignore[typeddict-item]
             "tags": tags or [],
             "paths": paths or [],
         },
         "count": len(matches),
         "candidates_before_filter": candidates_before_filter,
         "results": [_render_result(m, verbose) for m in matches],
+        "hint": hint,
     }
-    if not matches and candidates_before_filter > 0:
-        response["hint"] = (
-            f"filters eliminated {candidates_before_filter} candidates. "
-            "Relax classification, maturity, or tags."
-        )
-    return json.dumps(response, indent=2)
 
 
 _WORD_RE = re.compile(r"\w+")
@@ -494,23 +505,21 @@ def _apply_filters(
     return filtered
 
 
-def _render_result(m: dict, verbose: bool) -> dict:
+def _render_result(m: dict, verbose: bool) -> models.ApplicableEntry:
     r = m["row"]
-    base = {
+    return {
         "identifier": r["identifier"],
         "label": r["label"],
         "title": r["title"],
         "topic": r["topic"],
         "section": r["section"],
         "description": r["description"],
-        "applies": {c: bool(r[f"applies_{c.lower()}"]) for c in store.CLASSIFICATIONS},
-        "maturity": {ml: bool(r[f"maturity_{ml.lower()}"]) for ml in store.MATURITIES},
+        "applies": {c: bool(r[f"applies_{c.lower()}"]) for c in store.CLASSIFICATIONS},  # type: ignore[typeddict-item]
+        "maturity": {ml: bool(r[f"maturity_{ml.lower()}"]) for ml in store.MATURITIES},  # type: ignore[typeddict-item]
         "score": round(m["score"], 4),
         "why": m["why"],
+        "guideline": r["guideline"] if verbose else None,
     }
-    if verbose:
-        base["guideline"] = r["guideline"]
-    return base
 
 
 def _find_manifest_or_error(project_path: str | None) -> tuple[Path | None, dict | None]:
@@ -735,18 +744,17 @@ def ism_coverage_gaps(
 
     applicable: list[dict] | None = None
     if work is not None:
-        raw = json.loads(
-            ism_applicable(
+        try:
+            raw = _applicable_result(
                 work,
                 classification=manifest.scope.get("classification"),
                 maturity=manifest.scope.get("maturity"),
                 tags=manifest.scope.get("sections"),
                 limit=200,
             )
-        )
-        if "error" in raw:
-            return json.dumps({"error": f"ism_applicable: {raw['error']}"})
-        applicable = raw.get("results") or []
+        except ToolError as e:
+            raise ToolError(f"ism_applicable: {e}") from e
+        applicable = list(raw["results"])
 
     result = coverage.compute_gaps(
         manifest,

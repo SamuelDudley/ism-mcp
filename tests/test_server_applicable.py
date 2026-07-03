@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from ism_mcp import server, store
 from ism_mcp.embed import DeterministicHashEmbedder
@@ -44,19 +43,19 @@ def populated_db(tmp_path, sample_controls, monkeypatch):
 
 
 def test_applicable_returns_results(populated_db):
-    result = json.loads(server.ism_applicable("network encryption", limit=5))
+    result = server.ism_applicable("network encryption", limit=5)
     assert result["count"] >= 1
     ids = [r["identifier"] for r in result["results"]]
     assert "ism-9001" in ids
 
 
 def test_applicable_includes_candidates_before_filter(populated_db):
-    result = json.loads(server.ism_applicable("network encryption", limit=5))
+    result = server.ism_applicable("network encryption", limit=5)
     assert "candidates_before_filter" in result
 
 
 def test_applicable_classification_filter(populated_db):
-    result = json.loads(server.ism_applicable("audit logging", classification="SECRET", limit=5))
+    result = server.ism_applicable("audit logging", classification="SECRET", limit=5)
     ids = [r["identifier"] for r in result["results"]]
     assert "ism-9003" in ids
     for r in result["results"]:
@@ -64,40 +63,35 @@ def test_applicable_classification_filter(populated_db):
 
 
 def test_applicable_empty_after_filter_includes_hint(populated_db):
-    result = json.loads(
-        server.ism_applicable(
-            "anything",
-            classification="NC",
-            tags=["Audit"],
-            limit=5,
-        )
+    result = server.ism_applicable(
+        "anything",
+        classification="NC",
+        tags=["Audit"],
+        limit=5,
     )
     assert result["count"] == 0
-    assert "hint" in result
+    assert result["hint"] is not None
 
 
-def test_applicable_unknown_classification_returns_error(populated_db):
-    result = json.loads(server.ism_applicable("anything", classification="HUSH"))
-    assert "error" in result
-    assert "classification" in result["error"].lower()
+def test_applicable_unknown_classification_raises(populated_db):
+    with pytest.raises(ToolError, match="classification"):
+        server.ism_applicable("anything", classification="HUSH")
 
 
-def test_applicable_unknown_tag_returns_error(populated_db):
-    result = json.loads(server.ism_applicable("anything", tags=["No-Such-Section"]))
-    assert "error" in result
+def test_applicable_unknown_tag_raises(populated_db):
+    with pytest.raises(ToolError, match="unknown tags"):
+        server.ism_applicable("anything", tags=["No-Such-Section"])
 
 
 def test_applicable_path_expansion_shows_in_why(populated_db):
-    result = json.loads(
-        server.ism_applicable("session inactivity", paths=["src/auth/session.py"], limit=5)
-    )
+    result = server.ism_applicable("session inactivity", paths=["src/auth/session.py"], limit=5)
     assert result["count"] >= 1
     whys = [w for r in result["results"] for w in r["why"]]
     assert any(w.startswith("path:") for w in whys)
 
 
 def test_applicable_maturity_filter(populated_db):
-    result = json.loads(server.ism_applicable("logging events", maturity="ML3", limit=5))
+    result = server.ism_applicable("logging events", maturity="ML3", limit=5)
     ids = [r["identifier"] for r in result["results"]]
     assert "ism-9003" in ids
     for r in result["results"]:
@@ -153,6 +147,12 @@ def test_materialise_path_token_only_when_text_matches(db, sample_controls):
 
 
 def test_applicable_verbose_includes_guideline(populated_db):
-    result = json.loads(server.ism_applicable("logging events centrally", verbose=True, limit=5))
+    result = server.ism_applicable("logging events centrally", verbose=True, limit=5)
     found = [r for r in result["results"] if r["identifier"] == "ism-9003"]
-    assert found and "guideline" in found[0]
+    assert found and found[0]["guideline"] == "Guidelines for testing"
+
+
+def test_applicable_non_verbose_guideline_and_hint_are_null(populated_db):
+    result = server.ism_applicable("network encryption", limit=5)
+    assert result["hint"] is None
+    assert all(r["guideline"] is None for r in result["results"])

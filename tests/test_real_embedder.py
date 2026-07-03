@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import numpy as np
 import pytest
 
@@ -54,7 +52,7 @@ def test_applicable_surfaces_a_lexically_disjoint_semantic_match(
     server._reset_runtime_cache()
     # "idle logout window" shares no words with the session control's text, so a hit
     # there can only come from semantic retrieval, and its why must say so.
-    result = json.loads(server.ism_applicable("idle logout window", limit=3))
+    result = server.ism_applicable("idle logout window", limit=3)
     server._reset_runtime_cache()
     nine2 = next((r for r in result["results"] if r["identifier"] == "ism-9002"), None)
     assert nine2 is not None, [r["identifier"] for r in result["results"]]
