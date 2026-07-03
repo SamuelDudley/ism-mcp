@@ -6,13 +6,13 @@ import contextlib
 import os
 import tempfile
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-Status = Literal["covered", "partial", "not-applicable", "deferred"]
+from .models import RankedControlRef, Status
 
 
 @dataclass(frozen=True)
@@ -101,6 +101,13 @@ def _entry_from_dict(identifier: str, body: dict) -> ManifestEntry:
     for required in ("status", "how_met"):
         if required not in body:
             raise ValueError(f"{identifier}: missing required key {required!r}")
+    for key in ("status", "how_met", "reviewed_against", "reviewed_by"):
+        value = body.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{identifier}: {key} must be a string, got {value!r}")
+    for key in ("files", "commits"):
+        if any(not isinstance(item, str) for item in body.get(key) or []):
+            raise ValueError(f"{identifier}: {key} entries must be strings")
     last_reviewed = body.get("last_reviewed")
     if not isinstance(last_reviewed, date):
         raise ValueError(f"{identifier}: last_reviewed must be a TOML date, got {last_reviewed!r}")
@@ -285,7 +292,7 @@ _STATUS_PRIORITY = {"uncurated": 0, "partial": 1, "deferred": 2}
 def compute_gaps(
     manifest: Manifest,
     in_scope: list,
-    applicable: list[dict] | None = None,
+    applicable: Sequence[RankedControlRef] | None = None,
     limit: int = 50,
     canonical: Callable[[str], str] | None = None,
 ) -> dict:
@@ -328,18 +335,18 @@ def compute_gaps(
         )
         gaps = []
         for c in candidates:
-            status = _current_status(c.identifier)
-            gap: dict = {
-                "identifier": c.identifier,
-                "topic": c.topic,
-                "section": c.section,
-                "description": c.description,
-                "current_status": status,
-            }
-            ce = _current_entry(c.identifier)
-            if ce is not None:
-                gap["current_entry"] = ce
-            gaps.append(gap)
+            gaps.append(
+                {
+                    "identifier": c.identifier,
+                    "topic": c.topic,
+                    "section": c.section,
+                    "description": c.description,
+                    "current_status": _current_status(c.identifier),
+                    "current_entry": _current_entry(c.identifier),
+                    "score": None,
+                    "why": None,
+                }
+            )
         total = len(gaps)
         return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
 
@@ -352,20 +359,18 @@ def compute_gaps(
         if ident not in by_id:
             continue  # outside scope
         c = by_id[ident]
-        status = _current_status(ident)
-        gap = {
-            "identifier": ident,
-            "topic": c.topic,
-            "section": c.section,
-            "description": c.description,
-            "current_status": status,
-            "score": entry.get("score"),
-            "why": entry.get("why"),
-        }
-        ce = _current_entry(ident)
-        if ce is not None:
-            gap["current_entry"] = ce
-        gaps.append(gap)
+        gaps.append(
+            {
+                "identifier": ident,
+                "topic": c.topic,
+                "section": c.section,
+                "description": c.description,
+                "current_status": _current_status(ident),
+                "current_entry": _current_entry(ident),
+                "score": entry.get("score"),
+                "why": entry.get("why"),
+            }
+        )
     total = len(gaps)
     return {"gaps": gaps[:limit], "total_outstanding": total, "shown": min(limit, total)}
 
@@ -412,16 +417,19 @@ def compute_impact(
         old = lookup(against, ident)
         fields = changed_fields(old, target) if old is not None else []
         if fields:
-            item = {
-                "identifier": ident,
-                "status": entry.status,
-                "reviewed_against": against,
-                "changes": fields,
-                "how_met": entry.how_met,
-            }
+            reworded_diff = None
             if old is not None and "reworded" in fields:
-                item["diff"] = diff_text(old.description, target.description)
-            re_review.append(item)
+                reworded_diff = diff_text(old.description, target.description)
+            re_review.append(
+                {
+                    "identifier": ident,
+                    "status": entry.status,
+                    "reviewed_against": against,
+                    "changes": fields,
+                    "how_met": entry.how_met,
+                    "diff": reworded_diff,
+                }
+            )
         else:
             still_valid += 1
 

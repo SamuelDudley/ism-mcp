@@ -137,6 +137,8 @@ The table lists the bare tool names. Claude Code invokes them under the server k
 
 Lookup and listing tools default to the active ISM version. Pass `version` (see `ism_versions`) to target a historical release. Each `Control` record carries: `version`, `identifier`, `label`, `title`, `control_class`, `guideline`, `section`, `topic`, `description`, `control_revision`, `updated`, `sort_id`, classification applicability (`NC/OS/P/S/TS`), and maturity applicability (`ML1/ML2/ML3`).
 
+Every tool publishes a JSON output schema and returns structured content that validates against it. Constrained parameters (`classification`, `maturity`, `status`, `change_types`, `status_filter`) are schema enums, so invalid values are rejected before the tool runs. Failures arrive as MCP tool errors (`isError` with a message), never as `{"error": ...}` payloads inside a successful result. Keys are never conditionally absent: a key that does not apply to a given call is present with a `null` value.
+
 ## Discovery for agents
 
 The headline use case is `ism_applicable`. The agent describes the work in plain language, optionally narrows by classification, maturity, section tags, or repo paths, and gets back a ranked list of relevant controls.

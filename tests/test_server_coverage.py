@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from ism_mcp import server, store
 
@@ -65,7 +64,7 @@ def project_with_ism_db(tmp_path, sample_controls, monkeypatch):
 
 
 def test_coverage_read_returns_parsed_manifest(project_with_manifest, project_with_ism_db):
-    result = json.loads(server.ism_coverage_read())
+    result = server.ism_coverage_read()
     assert result["scope"]["classification"] == "S"
     assert result["scope"]["sections"] == ["Encryption", "Audit"]
     assert result["project"]["name"] == "demo"
@@ -83,15 +82,14 @@ def test_coverage_read_returns_parsed_manifest(project_with_manifest, project_wi
 
 def test_coverage_read_returns_error_when_missing(tmp_path, monkeypatch, project_with_ism_db):
     monkeypatch.chdir(tmp_path)
-    result = json.loads(server.ism_coverage_read())
-    assert "error" in result
-    assert "no manifest" in result["error"].lower()
+    with pytest.raises(ToolError, match="no manifest"):
+        server.ism_coverage_read()
 
 
 def test_coverage_read_status_filter(project_with_manifest, project_with_ism_db):
-    result = json.loads(server.ism_coverage_read(status_filter="covered"))
+    result = server.ism_coverage_read(status_filter="covered")
     assert list(result["controls"].keys()) == ["ism-9001"]
-    result = json.loads(server.ism_coverage_read(status_filter="partial"))
+    result = server.ism_coverage_read(status_filter="partial")
     assert result["controls"] == {}
 
 
@@ -103,22 +101,20 @@ def test_coverage_read_warns_about_identifier_not_in_ism(
         SEED_TOML
         + '\n[controls."ism-7777"]\nstatus = "covered"\nhow_met = "x"\nlast_reviewed = 2026-05-28\n'
     )
-    result = json.loads(server.ism_coverage_read())
+    result = server.ism_coverage_read()
     assert any("ism-7777" in w for w in result["warnings"])
 
 
 def test_coverage_upsert_creates_entry(project_with_manifest, project_with_ism_db):
-    result = json.loads(
-        server.ism_coverage_upsert(
-            identifier="ism-9002",
-            status="covered",
-            how_met="Sessions terminate after 14 min.",
-            files=["src/auth.py:1-20"],
-        )
+    result = server.ism_coverage_upsert(
+        identifier="ism-9002",
+        status="covered",
+        how_met="Sessions terminate after 14 min.",
+        files=["src/auth.py:1-20"],
     )
     assert result["ok"] is True
     assert result["action"] == "created"
-    parsed = json.loads(server.ism_coverage_read())
+    parsed = server.ism_coverage_read()
     assert "ism-9002" in parsed["controls"]
 
 
@@ -128,45 +124,36 @@ def test_coverage_upsert_updates_existing_entry(project_with_manifest, project_w
         status="partial",
         how_met="Now partial.",
     )
-    parsed = json.loads(server.ism_coverage_read())
+    parsed = server.ism_coverage_read()
     assert parsed["controls"]["ism-9001"]["status"] == "partial"
 
 
 def test_coverage_upsert_rejects_unknown_identifier(project_with_manifest, project_with_ism_db):
-    result = json.loads(
+    with pytest.raises(ToolError, match="no such control"):
         server.ism_coverage_upsert(
             identifier="ism-9999",
             status="covered",
             how_met="x",
         )
-    )
-    assert "error" in result
-    assert "no such control" in result["error"].lower()
 
 
 def test_coverage_upsert_rejects_invalid_status(project_with_manifest, project_with_ism_db):
-    result = json.loads(
+    with pytest.raises(ToolError, match="status"):
         server.ism_coverage_upsert(
             identifier="ism-9002",
             status="bogus",
             how_met="x",
         )
-    )
-    assert "error" in result
-    assert "status" in result["error"].lower()
 
 
 def test_coverage_upsert_rejects_missing_attachment(project_with_manifest, project_with_ism_db):
-    result = json.loads(
+    with pytest.raises(ToolError, match=r"nope\.png"):
         server.ism_coverage_upsert(
             identifier="ism-9002",
             status="covered",
             how_met="x",
             attachments=[{"path": "nope.png", "description": "x"}],
         )
-    )
-    assert "error" in result
-    assert "nope.png" in result["error"]
 
 
 def test_coverage_upsert_defaults_last_reviewed_to_today(
@@ -179,18 +166,16 @@ def test_coverage_upsert_defaults_last_reviewed_to_today(
         status="covered",
         how_met="x",
     )
-    parsed = json.loads(server.ism_coverage_read())
+    parsed = server.ism_coverage_read()
     assert parsed["controls"]["ism-9002"]["last_reviewed"] == _date.today().isoformat()
 
 
 def test_coverage_upsert_warns_out_of_scope(project_with_manifest, project_with_ism_db):
     # ism-9002 is section 'Authentication' which is not in scope.sections = ["Encryption", "Audit"].
-    result = json.loads(
-        server.ism_coverage_upsert(
-            identifier="ism-9002",
-            status="covered",
-            how_met="x",
-        )
+    result = server.ism_coverage_upsert(
+        identifier="ism-9002",
+        status="covered",
+        how_met="x",
     )
     assert result["ok"] is True
     assert any("scope" in w.lower() for w in result["warnings"])
@@ -199,7 +184,7 @@ def test_coverage_upsert_warns_out_of_scope(project_with_manifest, project_with_
 def test_coverage_gaps_without_work_lists_outstanding_in_scope(
     project_with_manifest, project_with_ism_db
 ):
-    result = json.loads(server.ism_coverage_gaps())
+    result = server.ism_coverage_gaps()
     ids = [g["identifier"] for g in result["gaps"]]
     assert "ism-9003" in ids
     assert "ism-9001" not in ids  # covered
@@ -209,24 +194,24 @@ def test_coverage_gaps_without_work_lists_outstanding_in_scope(
 def test_coverage_gaps_with_work_intersects_with_applicable(
     project_with_manifest, project_with_ism_db
 ):
-    result = json.loads(server.ism_coverage_gaps(work="event logging"))
+    result = server.ism_coverage_gaps(work="event logging")
     ids = [g["identifier"] for g in result["gaps"]]
     assert "ism-9003" in ids
     g = next(g for g in result["gaps"] if g["identifier"] == "ism-9003")
-    assert "score" in g
-    assert "why" in g
+    assert g["score"] is not None
+    assert g["why"] is not None
 
 
 def test_coverage_gaps_returns_error_when_manifest_missing(
     tmp_path, monkeypatch, project_with_ism_db
 ):
     monkeypatch.chdir(tmp_path)
-    result = json.loads(server.ism_coverage_gaps())
-    assert "error" in result
+    with pytest.raises(ToolError, match="no manifest"):
+        server.ism_coverage_gaps()
 
 
 def test_coverage_gaps_limit_truncates(project_with_manifest, project_with_ism_db):
-    result = json.loads(server.ism_coverage_gaps(limit=1))
+    result = server.ism_coverage_gaps(limit=1)
     assert len(result["gaps"]) <= 1
 
 
@@ -239,22 +224,20 @@ def test_coverage_upsert_surfaces_sibling_attachment_warning(
         'description = "screenshot"\n'
     )
     monkeypatch.chdir(tmp_path)
-    result = json.loads(
-        server.ism_coverage_upsert(identifier="ism-9002", status="covered", how_met="x")
-    )
+    result = server.ism_coverage_upsert(identifier="ism-9002", status="covered", how_met="x")
     assert result["ok"] is True
     assert any("missing.png" in w for w in result["warnings"]), result["warnings"]
 
 
 def test_upsert_stamps_reviewed_against_active_version(project_with_manifest, project_with_ism_db):
-    out = json.loads(server.ism_coverage_upsert("ism-9002", "covered", "done"))
+    out = server.ism_coverage_upsert("ism-9002", "covered", "done")
     assert out["ok"] is True
-    read = json.loads(server.ism_coverage_read())
+    read = server.ism_coverage_read()
     assert read["controls"]["ism-9002"]["reviewed_against"] == V
 
 
 def test_coverage_impact_reports_new_uncovered(project_with_manifest, project_with_ism_db):
-    out = json.loads(server.ism_coverage_impact())
+    out = server.ism_coverage_impact()
     assert out["target_version"] == V
     assert "summary" in out
     assert "ism-9003" in {e["identifier"] for e in out["new_uncovered"]}
@@ -279,7 +262,7 @@ def test_gaps_handles_uppercase_manifest_keys(tmp_path, monkeypatch, project_wit
     # XLSX-era manifest keys (ISM-9001) must still register as covered against lowercase ids.
     (tmp_path / ".ism-coverage.toml").write_text(UPPER_SEED)
     monkeypatch.chdir(tmp_path)
-    result = json.loads(server.ism_coverage_gaps())
+    result = server.ism_coverage_gaps()
     ids = [g["identifier"] for g in result["gaps"]]
     assert "ism-9001" not in ids
     assert "ism-9003" in ids
@@ -288,5 +271,5 @@ def test_gaps_handles_uppercase_manifest_keys(tmp_path, monkeypatch, project_wit
 def test_impact_handles_uppercase_manifest_keys(tmp_path, monkeypatch, project_with_ism_db):
     (tmp_path / ".ism-coverage.toml").write_text(UPPER_SEED)
     monkeypatch.chdir(tmp_path)
-    out = json.loads(server.ism_coverage_impact())
+    out = server.ism_coverage_impact()
     assert "ism-9001" not in {e["identifier"] for e in out["new_uncovered"]}

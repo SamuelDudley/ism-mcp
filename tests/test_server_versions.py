@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from ism_mcp import server, store
 from ism_mcp.embed import DeterministicHashEmbedder
@@ -75,7 +74,7 @@ def single_version_db(tmp_path, sample_controls, monkeypatch):
 
 
 def test_ism_versions_lists_active_first(two_version_db):
-    out = json.loads(server.ism_versions())
+    out = server.ism_versions()
     assert out["active"] == "2026.03.24"
     assert out["count"] == 2
     assert out["versions"][0]["version"] == "2026.03.24"
@@ -83,43 +82,60 @@ def test_ism_versions_lists_active_first(two_version_db):
 
 
 def test_ism_stats_reports_active_version(two_version_db):
-    out = json.loads(server.ism_stats())
+    out = server.ism_stats()
     assert out["active_version"] == "2026.03.24"
     assert out["versions"] == 2
     assert out["controls"] == 3
 
 
 def test_ism_get_defaults_to_active_and_accepts_version(two_version_db):
-    active = json.loads(server.ism_get("ism-9003"))
+    active = server.ism_get("ism-9003")
     assert active["version"] == "2026.03.24"
-    missing = json.loads(server.ism_get("ism-9003", version="2025.12.9"))
-    assert "error" in missing
+    with pytest.raises(ToolError, match="no such control"):
+        server.ism_get("ism-9003", version="2025.12.9")
 
 
 def test_ism_get_tolerant_identifier(two_version_db):
-    out = json.loads(server.ism_get("ISM-9001"))
+    out = server.ism_get("ISM-9001")
     assert out["identifier"] == "ism-9001"
 
 
 def test_ism_diff_defaults_to_latest_vs_previous(two_version_db):
-    out = json.loads(server.ism_diff())
+    out = server.ism_diff()
     assert out["from"] == "2025.12.9"
     assert out["to"] == "2026.03.24"
     # ism-9003 exists only in the active (new) version per the fixture:
     assert "ism-9003" in {c["identifier"] for c in out["changes"]["added"]}
+    assert all(out["summary"][k] is not None for k in out["summary"])
+
+
+def test_ism_diff_change_types_nulls_unrequested_buckets(two_version_db):
+    out = server.ism_diff(change_types=["added"])
+    assert out["changes"]["added"] is not None
+    assert out["changes"]["reworded"] is None
+    assert out["summary"]["reworded"] is None
 
 
 def test_ism_diff_explicit_versions_and_unknown(two_version_db):
-    bad = json.loads(server.ism_diff(from_version="9999.99.99", to_version="2026.03.24"))
-    assert "error" in bad
+    with pytest.raises(ToolError, match="no such version"):
+        server.ism_diff(from_version="9999.99.99", to_version="2026.03.24")
 
 
 def test_ism_history_timeline(two_version_db):
-    out = json.loads(server.ism_history("ism-9001"))
+    out = server.ism_history("ism-9001")
     assert out["identifier"] == "ism-9001"
     assert [t["version"] for t in out["timeline"]] == ["2025.12.9", "2026.03.24"]
+    assert out["hint"] is None
+
+
+def test_ism_history_unknown_id_soft_result(two_version_db):
+    out = server.ism_history("ism-0000")
+    assert out["timeline"] == []
+    assert out["first_seen"] is None
+    assert out["last_seen"] is None
+    assert "no control" in out["hint"]
 
 
 def test_ism_diff_single_version_errors(single_version_db):
-    out = json.loads(server.ism_diff())
-    assert "error" in out
+    with pytest.raises(ToolError, match="need two versions"):
+        server.ism_diff()

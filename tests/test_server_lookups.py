@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from ism_mcp import server, store
 
@@ -38,46 +37,45 @@ def populated_db(tmp_path, sample_controls, monkeypatch):
 
 
 def test_ism_get_returns_record(populated_db):
-    result = json.loads(server.ism_get("ISM-9001"))
+    result = server.ism_get("ISM-9001")
     assert result["identifier"] == "ism-9001"
     assert result["applies"]["S"] is True
 
 
-def test_ism_get_unknown_returns_error(populated_db):
-    result = json.loads(server.ism_get("ism-0000"))
-    assert "error" in result
-    assert "no such control" in result["error"].lower()
+def test_ism_get_unknown_raises(populated_db):
+    with pytest.raises(ToolError, match="no such control"):
+        server.ism_get("ism-0000")
 
 
 def test_ism_search_returns_matches(populated_db):
-    result = json.loads(server.ism_search("encryption"))
+    result = server.ism_search("encryption")
     assert result["count"] >= 1
     assert any(r["identifier"] == "ism-9001" for r in result["results"])
 
 
 def test_ism_list_by_classification_filters(populated_db):
-    result = json.loads(server.ism_list_by_classification("S"))
+    result = server.ism_list_by_classification("S")
     assert result["classification"] == "S"
     assert "ism-9003" in result["identifiers"]
 
 
-def test_ism_list_by_classification_unknown_returns_error(populated_db):
-    result = json.loads(server.ism_list_by_classification("XX"))
-    assert "error" in result
+def test_ism_list_by_classification_unknown_raises(populated_db):
+    with pytest.raises(ToolError, match="unknown classification"):
+        server.ism_list_by_classification("XX")
 
 
 def test_ism_list_topics(populated_db):
-    result = json.loads(server.ism_list_topics())
+    result = server.ism_list_topics()
     assert "Network encryption" in result["topics"]
 
 
 def test_ism_list_by_topic(populated_db):
-    result = json.loads(server.ism_list_by_topic("Network encryption"))
+    result = server.ism_list_by_topic("Network encryption")
     assert result["identifiers"] == ["ism-9001"]
 
 
 def test_ism_stats_reports_active_and_path(populated_db):
-    result = json.loads(server.ism_stats())
+    result = server.ism_stats()
     assert result["controls"] == 3
     assert result["active_version"] == V
     assert result["db_path"] == str(populated_db)

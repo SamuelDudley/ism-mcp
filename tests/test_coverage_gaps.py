@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from ism_mcp.coverage import Manifest, ManifestEntry, compute_gaps
+from ism_mcp.models import RankedControlRef
 
 
 class _Ctrl:
@@ -60,8 +61,10 @@ def test_gaps_without_work_returns_all_outstanding(tmp_path):
     assert result["total_outstanding"] == 2
     assert result["gaps"][0]["current_status"] == "uncurated"
     assert result["gaps"][1]["current_status"] == "partial"
-    assert "current_entry" in result["gaps"][1]
-    assert "current_entry" not in result["gaps"][0]
+    assert result["gaps"][1]["current_entry"] is not None
+    assert result["gaps"][0]["current_entry"] is None
+    assert result["gaps"][0]["score"] is None
+    assert result["gaps"][0]["why"] is None
 
 
 def test_gaps_ordering_uncurated_then_partial_then_deferred(tmp_path):
@@ -90,7 +93,7 @@ def test_gaps_with_work_intersects_applicable_results(tmp_path):
         _Ctrl("ISM-0003", "Topic C", "Sec C", "desc C"),
     ]
     manifest = _manifest(tmp_path, {})  # all uncurated
-    applicable = [
+    applicable: list[RankedControlRef] = [
         {"identifier": "ISM-0002", "score": 0.5, "why": ["semantic"]},
         {"identifier": "ISM-0001", "score": 0.3, "why": ["semantic", "lexical"]},
         # ISM-0003 isn't relevant to this work
@@ -108,7 +111,7 @@ def test_gaps_with_work_skips_covered(tmp_path):
         _Ctrl("ISM-0002", "Topic", "Sec", "desc"),
     ]
     manifest = _manifest(tmp_path, {"ISM-0001": _entry("ISM-0001", "covered")})
-    applicable = [
+    applicable: list[RankedControlRef] = [
         {"identifier": "ISM-0001", "score": 0.9, "why": ["semantic"]},
         {"identifier": "ISM-0002", "score": 0.5, "why": ["semantic"]},
     ]

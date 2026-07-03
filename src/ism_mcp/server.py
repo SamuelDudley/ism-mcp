@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
 import sqlite3
@@ -11,10 +10,11 @@ from datetime import date as _date
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from . import classification as cls
-from . import coverage, diff, retrieve, store
+from . import coverage, diff, models, retrieve, store
 from . import paths as repo_paths
 from .embed import DeterministicHashEmbedder, Embedder, FastEmbedEmbedder
 
@@ -27,11 +27,12 @@ mcp = FastMCP(
     "ism-mcp",
     instructions=(
         "Query layer over a local SQLite copy of the ASD Information Security Manual "
-        "(ISM), including Essential Eight maturity data. All tools return JSON strings "
-        'and report failures as {"error": ...} rather than raising. Data is as fresh as '
-        "the last ingested ISM release (check with ism_stats). Every tool is read-only "
-        "except ism_coverage_upsert, which edits the project's .ism-coverage.toml. "
-        "No network access, auth, or rate limits."
+        "(ISM), including Essential Eight maturity data. Every tool returns a typed "
+        "structured result matching its published output schema, and failures arrive "
+        "as tool errors (isError) with a message, never as error payloads. Data is as "
+        "fresh as the last ingested ISM release (check with ism_stats). Every tool is "
+        "read-only except ism_coverage_upsert, which edits the project's "
+        ".ism-coverage.toml. No network access, auth, or rate limits."
     ),
 )
 
@@ -106,25 +107,25 @@ def _conn() -> sqlite3.Connection:
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_get(identifier: str, version: str | None = None) -> str:
+def ism_get(identifier: str, version: str | None = None) -> models.ControlRecord:
     """Get the full record for one ISM control by identifier (e.g. `ism-1781`).
 
     Identifier input is tolerant: `ISM-1781`, bare `1781`, and legacy labels resolve
-    to the canonical OSCAL id. Returns JSON with title, control text, section, topic,
-    classification applicability, and Essential Eight maturity flags, or
-    `{"error": ...}` when nothing matches. Use ism_search or ism_applicable first
-    when the identifier is unknown. Defaults to the active ISM version. Pass
-    `version` (see ism_versions) for a historical one.
+    to the canonical OSCAL id. Returns the control record with title, control text,
+    section, topic, classification applicability, and Essential Eight maturity flags.
+    Fails when nothing matches. Use ism_search or ism_applicable first when the
+    identifier is unknown. Defaults to the active ISM version. Pass `version` (see
+    ism_versions) for a historical one.
     """
     conn = _conn()
     c = store.get_control(conn, identifier, version=version)
     if c is None:
-        return json.dumps({"error": f"no such control: {identifier}"})
-    return json.dumps(c.as_dict(), indent=2)
+        raise ToolError(f"no such control: {identifier}")
+    return c.as_dict()
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
+def ism_search(query: str, limit: int = 10, version: str | None = None) -> models.SearchResult:
     """Full-text keyword search (FTS5 BM25) over ISM control text and topics.
 
     Best when you already know the terms, an exact phrase, or part of a control title.
@@ -135,38 +136,34 @@ def ism_search(query: str, limit: int = 10, version: str | None = None) -> str:
     """
     conn = _conn()
     results = store.search(conn, query, limit=_clamp_limit(limit), version=version)
-    return json.dumps(
-        {"query": query, "count": len(results), "results": [c.as_dict() for c in results]},
-        indent=2,
-    )
+    return {"query": query, "count": len(results), "results": [c.as_dict() for c in results]}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_by_classification(classification: str, version: str | None = None) -> str:
+def ism_list_by_classification(
+    classification: models.Classification, version: str | None = None
+) -> models.ClassificationControls:
     """List controls that apply at a given classification level.
 
     `classification` takes canonical abbreviations only: NC, OS, P, S, or TS (see
     ism_list_classifications for the OFFICIAL through TOP_SECRET mapping). Returns
     `{classification, count, identifiers}` with ids only. Fetch full records with
-    ism_get. An unknown level returns `{"error": ...}`.
+    ism_get. An unknown level fails.
     """
     conn = _conn()
     try:
         results = store.list_by_classification(conn, classification, version=version)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
-    return json.dumps(
-        {
-            "classification": classification.upper(),
-            "count": len(results),
-            "identifiers": [c.identifier for c in results],
-        },
-        indent=2,
-    )
+        raise ToolError(str(e)) from e
+    return {
+        "classification": classification,
+        "count": len(results),
+        "identifiers": [c.identifier for c in results],
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_topics(version: str | None = None) -> str:
+def ism_list_topics(version: str | None = None) -> models.TopicsList:
     """List all distinct topic strings present in the ISM.
 
     The vocabulary for the `topic` argument of ism_list_by_topic. Returns
@@ -174,11 +171,11 @@ def ism_list_topics(version: str | None = None) -> str:
     """
     conn = _conn()
     topics = store.list_topics(conn, version=version)
-    return json.dumps({"count": len(topics), "topics": topics}, indent=2)
+    return {"count": len(topics), "topics": topics}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_by_topic(topic: str, version: str | None = None) -> str:
+def ism_list_by_topic(topic: str, version: str | None = None) -> models.TopicControls:
     """List controls under a specific topic (exact match, use ism_list_topics to enumerate).
 
     Returns `{topic, count, identifiers}` with ids only. Fetch full records with
@@ -186,14 +183,11 @@ def ism_list_by_topic(topic: str, version: str | None = None) -> str:
     """
     conn = _conn()
     results = store.list_by_topic(conn, topic, version=version)
-    return json.dumps(
-        {"topic": topic, "count": len(results), "identifiers": [c.identifier for c in results]},
-        indent=2,
-    )
+    return {"topic": topic, "count": len(results), "identifiers": [c.identifier for c in results]}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_stats() -> str:
+def ism_stats() -> models.Stats:
     """Report database state: active ISM version, version and control counts, db path.
 
     Takes no arguments. Useful as a first call to confirm data is ingested and see
@@ -203,21 +197,18 @@ def ism_stats() -> str:
     conn = _conn()
     active = store.get_active_version(conn)
     row = store.get_version(conn, active) if active else None
-    return json.dumps(
-        {
-            "active_version": active,
-            "versions": len(store.list_versions(conn)),
-            "controls": store.count_controls(conn) if active else 0,
-            "oscal_version": row["oscal_version"] if row else None,
-            "git_tag": row["git_tag"] if row else None,
-            "db_path": str(_active_db()),
-        },
-        indent=2,
-    )
+    return {
+        "active_version": active,
+        "versions": len(store.list_versions(conn)),
+        "controls": store.count_controls(conn) if active else 0,
+        "oscal_version": row["oscal_version"] if row else None,
+        "git_tag": row["git_tag"] if row else None,
+        "db_path": str(_active_db()),
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_versions() -> str:
+def ism_versions() -> models.VersionsResult:
     """List loaded ISM versions, newest first. The vocabulary for version/from/to arguments.
 
     Returns `{active, count, versions}` where each entry carries version, label,
@@ -227,62 +218,56 @@ def ism_versions() -> str:
     conn = _conn()
     active = store.get_active_version(conn)
     versions = store.list_versions(conn)
-    return json.dumps(
-        {
-            "active": active,
-            "count": len(versions),
-            "versions": [
-                {
-                    "version": v["version"],
-                    "label": v["label"],
-                    "published": v["published"],
-                    "control_count": v["control_count"],
-                    "git_tag": v["git_tag"],
-                    "is_active": v["version"] == active,
-                }
-                for v in versions
-            ],
-        },
-        indent=2,
-    )
+    return {
+        "active": active,
+        "count": len(versions),
+        "versions": [
+            {
+                "version": v["version"],
+                "label": v["label"],
+                "published": v["published"],
+                "control_count": v["control_count"],
+                "git_tag": v["git_tag"],
+                "is_active": v["version"] == active,
+            }
+            for v in versions
+        ],
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_sections(version: str | None = None) -> str:
+def ism_list_sections(version: str | None = None) -> models.SectionsList:
     """List the distinct ISM Section values, the vocabulary for the `tags` filter on ism_applicable.
 
     Returns `{count, sections}` for the active version unless `version` is passed.
     """
     conn = _conn()
     sections = store.list_sections(conn, version=version)
-    return json.dumps({"count": len(sections), "sections": sections}, indent=2)
+    return {"count": len(sections), "sections": sections}
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_classifications() -> str:
+def ism_list_classifications() -> models.ClassificationVocab:
     """Return the classification vocabulary as parallel lists.
 
     `canonical[i]` (NC, OS, P, S, TS) pairs with `friendly[i]` (OFFICIAL through
     TOP_SECRET). ism_applicable accepts either form. ism_list_by_classification
     accepts canonical only. Static data, no database read.
     """
-    return json.dumps(
-        {
-            "canonical": ["NC", "OS", "P", "S", "TS"],
-            "friendly": [
-                "OFFICIAL",
-                "OFFICIAL:Sensitive",
-                "PROTECTED",
-                "SECRET",
-                "TOP_SECRET",
-            ],
-        },
-        indent=2,
-    )
+    return {
+        "canonical": ["NC", "OS", "P", "S", "TS"],
+        "friendly": [
+            "OFFICIAL",
+            "OFFICIAL:Sensitive",
+            "PROTECTED",
+            "SECRET",
+            "TOP_SECRET",
+        ],
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_list_maturities() -> str:
+def ism_list_maturities() -> models.MaturityVocab:
     """Return the Essential Eight maturity levels: ML1, ML2, ML3.
 
     The Essential Eight is the ASD's baseline set of mitigation strategies, and only
@@ -290,30 +275,29 @@ def ism_list_maturities() -> str:
     for the `maturity` filter on ism_applicable and for coverage manifest scope.
     Static data, no database read.
     """
-    return json.dumps({"maturities": ["ML1", "ML2", "ML3"]}, indent=2)
+    return {"maturities": ["ML1", "ML2", "ML3"]}
 
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_diff(
     from_version: str | None = None,
     to_version: str | None = None,
-    change_types: list[str] | None = None,
-) -> str:
+    change_types: list[models.ChangeType] | None = None,
+) -> models.DiffResult:
     """Catalog delta between two ISM versions.
 
     Defaults compare the version before active (from) to the active version (to), so a
     bare call answers 'what changed in the latest release'. `change_types` narrows the
     buckets (added, removed, reworded, retitled, moved, applicability_changed,
-    maturity_changed). Returns `{from, to, summary, changes}`. Unknown versions return
-    `{"error": ...}`. Use ism_versions to see loadable versions, and ism_history for
-    one control's timeline instead of the whole catalog.
+    maturity_changed) and sets unrequested buckets to null. Returns
+    `{from, to, summary, changes}`. Fails on unknown versions. Use ism_versions to see
+    loadable versions, and ism_history for one control's timeline instead of the
+    whole catalog.
     """
     conn = _conn()
     versions = [v["version"] for v in store.list_versions(conn)]  # newest first
     if len(versions) < 2 and (from_version is None or to_version is None):
-        return json.dumps(
-            {"error": "need two versions to diff", "hint": "load history with ingest-history"}
-        )
+        raise ToolError("need two versions to diff. load history with ingest-history")
     to_v = to_version or store.get_active_version(conn) or versions[0]
     if from_version is not None:
         from_v = from_version
@@ -321,22 +305,23 @@ def ism_diff(
         later = [v for v in versions if v < to_v]
         from_v = later[0] if later else None
     if from_v is None:
-        return json.dumps({"error": "no earlier version to compare against to_version"})
+        raise ToolError("no earlier version to compare against to_version")
     for v in (from_v, to_v):
         if store.get_version(conn, v) is None:
-            return json.dumps({"error": f"no such version: {v}", "hint": "call ism_versions"})
+            raise ToolError(f"no such version: {v}. call ism_versions")
 
     result = diff.diff_controls(store.list_controls(conn, from_v), store.list_controls(conn, to_v))
+    summary = dict(result["summary"])
+    changes = dict(result["changes"])
     if change_types:
-        result = {
-            "summary": {k: v for k, v in result["summary"].items() if k in change_types},
-            "changes": {k: v for k, v in result["changes"].items() if k in change_types},
-        }
-    return json.dumps({"from": from_v, "to": to_v, **result}, indent=2)
+        keep = set(change_types)
+        summary = {k: (v if k in keep else None) for k, v in summary.items()}
+        changes = {k: (v if k in keep else None) for k, v in changes.items()}
+    return {"from": from_v, "to": to_v, "summary": summary, "changes": changes}  # type: ignore[typeddict-item]
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_history(identifier: str) -> str:
+def ism_history(identifier: str) -> models.HistoryResult:
     """Show one control's evolution across every loaded ISM version.
 
     Returns a chronological timeline of changes to that single control. Identifier
@@ -353,27 +338,28 @@ def ism_history(identifier: str) -> str:
         if canon is not None:
             break
     if canon is None:
-        return json.dumps(
-            {
-                "identifier": identifier,
-                "timeline": [],
-                "hint": "no control with that id in any version",
-            }
-        )
+        return {
+            "identifier": identifier,
+            "first_seen": None,
+            "last_seen": None,
+            "timeline": [],
+            "hint": "no control with that id in any version",
+        }
     by_version = {v: store.get_control(conn, canon, version=v) for v in order}
-    return json.dumps(diff.build_history(canon, order, by_version), indent=2)
+    history = diff.build_history(canon, order, by_version)
+    return {**history, "hint": None}  # type: ignore[typeddict-item]
 
 
 @mcp.tool(annotations=READ_ONLY)
 def ism_applicable(
     work: str,
-    classification: str | None = None,
-    maturity: str | None = None,
+    classification: models.ClassificationInput | None = None,
+    maturity: models.Maturity | None = None,
     tags: list[str] | None = None,
     paths: list[str] | None = None,
     limit: int = 20,
     verbose: bool = False,
-) -> str:
+) -> models.ApplicableResult:
     """Rank ISM controls relevant to a free-text description of planned or current work.
 
     The primary discovery tool. Describe the work in a sentence or two and it returns
@@ -383,10 +369,22 @@ def ism_applicable(
     TOP_SECRET), maturity (ML1|ML2|ML3, Essential Eight controls only, so leave it
     unset unless scoping to the Essential Eight), tags (validated against
     ism_list_sections), paths (repo paths whose tokens expand the lexical query).
-    Invalid filter values return `{"error": ...}`. `limit` defaults to 20 (capped at
-    200). `verbose` adds each control's guideline text to the results. `score` is a
-    normalised RRF score in [0.0, 1.0], not a probability.
+    Invalid filter values fail. `limit` defaults to 20 (capped at 200). `verbose`
+    populates each control's guideline text, null otherwise. `score` is a normalised
+    RRF score in [0.0, 1.0], not a probability.
     """
+    return _applicable_result(work, classification, maturity, tags, paths, limit, verbose)
+
+
+def _applicable_result(
+    work: str,
+    classification: str | None = None,
+    maturity: str | None = None,
+    tags: list[str] | None = None,
+    paths: list[str] | None = None,
+    limit: int = 20,
+    verbose: bool = False,
+) -> models.ApplicableResult:
     conn = _conn()
 
     try:
@@ -394,20 +392,18 @@ def ism_applicable(
             cls.normalise_classification(classification) if classification else None
         )
     except ValueError as e:
-        return json.dumps({"error": f"classification: {e}"})
+        raise ToolError(f"classification: {e}") from e
 
     try:
         norm_maturity = cls.normalise_maturity(maturity) if maturity else None
     except ValueError as e:
-        return json.dumps({"error": f"maturity: {e}"})
+        raise ToolError(f"maturity: {e}") from e
 
     valid_sections = set(store.list_sections(conn))
     if tags:
         unknown = [t for t in tags if t not in valid_sections]
         if unknown:
-            return json.dumps(
-                {"error": f"unknown tags: {unknown}. Use ism_list_sections() to discover."}
-            )
+            raise ToolError(f"unknown tags: {unknown}. Use ism_list_sections() to discover.")
 
     expanded_terms, matched_path_tokens = repo_paths.expand_paths(paths or [])
     lexical_query = " ".join([work, *sorted(expanded_terms)]) if expanded_terms else work
@@ -434,24 +430,25 @@ def ism_applicable(
     matches = _apply_filters(matches, norm_classification, norm_maturity, tags)
     matches = matches[: _clamp_limit(limit)]
 
-    response: dict = {
+    hint = None
+    if not matches and candidates_before_filter > 0:
+        hint = (
+            f"filters eliminated {candidates_before_filter} candidates. "
+            "Relax classification, maturity, or tags."
+        )
+    return {
         "query": work,
         "filters": {
-            "classification": norm_classification,
-            "maturity": norm_maturity,
+            "classification": norm_classification,  # type: ignore[typeddict-item]
+            "maturity": norm_maturity,  # type: ignore[typeddict-item]
             "tags": tags or [],
             "paths": paths or [],
         },
         "count": len(matches),
         "candidates_before_filter": candidates_before_filter,
         "results": [_render_result(m, verbose) for m in matches],
+        "hint": hint,
     }
-    if not matches and candidates_before_filter > 0:
-        response["hint"] = (
-            f"filters eliminated {candidates_before_filter} candidates. "
-            "Relax classification, maturity, or tags."
-        )
-    return json.dumps(response, indent=2)
 
 
 _WORD_RE = re.compile(r"\w+")
@@ -508,39 +505,37 @@ def _apply_filters(
     return filtered
 
 
-def _render_result(m: dict, verbose: bool) -> dict:
+def _render_result(m: dict, verbose: bool) -> models.ApplicableEntry:
     r = m["row"]
-    base = {
+    return {
         "identifier": r["identifier"],
         "label": r["label"],
         "title": r["title"],
         "topic": r["topic"],
         "section": r["section"],
         "description": r["description"],
-        "applies": {c: bool(r[f"applies_{c.lower()}"]) for c in store.CLASSIFICATIONS},
-        "maturity": {ml: bool(r[f"maturity_{ml.lower()}"]) for ml in store.MATURITIES},
+        "applies": {c: bool(r[f"applies_{c.lower()}"]) for c in store.CLASSIFICATIONS},  # type: ignore[typeddict-item]
+        "maturity": {ml: bool(r[f"maturity_{ml.lower()}"]) for ml in store.MATURITIES},  # type: ignore[typeddict-item]
         "score": round(m["score"], 4),
         "why": m["why"],
+        "guideline": r["guideline"] if verbose else None,
     }
-    if verbose:
-        base["guideline"] = r["guideline"]
-    return base
 
 
-def _find_manifest_or_error(project_path: str | None) -> tuple[Path | None, dict | None]:
+def _find_manifest(project_path: str | None) -> Path:
     start = Path(project_path) if project_path else Path.cwd()
     found = coverage.find_manifest(start)
     if found is None:
-        return None, {
-            "error": "no manifest found",
-            "hint": (
-                "create .ism-coverage.toml at the project root with at minimum a [scope] section"
-            ),
-        }
-    return found, None
+        raise ToolError(
+            "no manifest found. "
+            "create .ism-coverage.toml at the project root with at minimum a [scope] section"
+        )
+    return found
 
 
-def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) -> dict:
+def _manifest_to_json(
+    manifest: coverage.Manifest, status_filter: str | None
+) -> models.CoverageReadResult:
     controls = {}
     summary = {
         "total_curated": len(manifest.controls),
@@ -577,23 +572,22 @@ def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) ->
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_coverage_read(project_path: str | None = None, status_filter: str | None = None) -> str:
+def ism_coverage_read(
+    project_path: str | None = None, status_filter: models.Status | None = None
+) -> models.CoverageReadResult:
     """Read the project's coverage manifest (`.ism-coverage.toml`). Never writes.
 
     Returns scope, summary counts, and curated entries. Walks up from cwd to find the
-    manifest if `project_path` is omitted and returns `{"error": ...}` when none is
-    found. `status_filter` narrows the controls map to a single status
+    manifest if `project_path` is omitted and fails when none is found.
+    `status_filter` narrows the controls map to a single status
     (`covered|partial|not-applicable|deferred`) while summary stays unfiltered. To
     see what is missing rather than what is curated, use ism_coverage_gaps.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
     try:
         manifest = coverage.read_manifest(path)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
+        raise ToolError(str(e)) from e
 
     conn = _conn()
     extra_warnings: list[str] = list(manifest.warnings)
@@ -609,7 +603,7 @@ def ism_coverage_read(project_path: str | None = None, status_filter: str | None
         warnings=extra_warnings,
     )
 
-    return json.dumps(_manifest_to_json(manifest, status_filter), indent=2)
+    return _manifest_to_json(manifest, status_filter)
 
 
 def _is_in_scope(scope: dict, control) -> bool:
@@ -638,7 +632,7 @@ def _is_in_scope(scope: dict, control) -> bool:
 @mcp.tool(annotations=WRITES_MANIFEST)
 def ism_coverage_upsert(
     identifier: str,
-    status: str,
+    status: models.Status,
     how_met: str,
     last_reviewed: str | None = None,
     reviewed_by: str | None = None,
@@ -649,7 +643,7 @@ def ism_coverage_upsert(
     urls: list[dict] | None = None,
     attachments: list[dict] | None = None,
     project_path: str | None = None,
-) -> str:
+) -> models.UpsertResult:
     """Create or update one entry in the coverage manifest (`.ism-coverage.toml`).
 
     The only tool that writes to disk. It rewrites the manifest file atomically and an
@@ -657,34 +651,27 @@ def ism_coverage_upsert(
     covered, partial, not-applicable, or deferred. Validates identifier against the
     ISM DB, requires every attachment path to resolve on disk and every url and
     attachment to carry a description. `last_reviewed` defaults to today. Returns the
-    updated summary plus warnings, or `{"error": ...}` on validation failure.
+    action taken plus warnings and fails on validation errors.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
 
     conn = _conn()
     control = store.get_control(conn, identifier)
     if control is None:
-        return json.dumps(
-            {
-                "error": (
-                    f"no such control: {identifier}. "
-                    "Use ism_search or ism_list_topics to find the right id."
-                )
-            }
+        raise ToolError(
+            f"no such control: {identifier}. "
+            "Use ism_search or ism_list_topics to find the right id."
         )
 
     try:
         last_reviewed_date = _date.fromisoformat(last_reviewed) if last_reviewed else _date.today()
         next_review_date = _date.fromisoformat(next_review) if next_review else None
     except ValueError as e:
-        return json.dumps({"error": f"date format: {e}"})
+        raise ToolError(f"date format: {e}") from e
 
     entry = coverage.ManifestEntry(
         identifier=identifier,
-        status=status,  # type: ignore[arg-type]
+        status=status,
         how_met=how_met,
         last_reviewed=last_reviewed_date,
         reviewed_by=reviewed_by,
@@ -698,17 +685,15 @@ def ism_coverage_upsert(
 
     try:
         result = coverage.upsert_entry(path, entry)
-    except ValueError as e:
-        return json.dumps({"error": str(e)})
-    except FileNotFoundError as e:
-        return json.dumps({"error": str(e)})
+    except (ValueError, FileNotFoundError) as e:
+        raise ToolError(str(e)) from e
 
     manifest = coverage.read_manifest(path)
     result["warnings"].extend(manifest.warnings)
     if not _is_in_scope(manifest.scope, control):
         result["warnings"].append(f"{identifier}: identifier is outside declared scope")
 
-    return json.dumps(result, indent=2)
+    return result  # type: ignore[return-value]
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -716,7 +701,7 @@ def ism_coverage_gaps(
     work: str | None = None,
     project_path: str | None = None,
     limit: int = 50,
-) -> str:
+) -> models.GapsResult:
     """Return outstanding in-scope controls (uncurated, partial, deferred). Never writes.
 
     The complement of ism_coverage_read: read reports what is curated, gaps reports
@@ -726,15 +711,12 @@ def ism_coverage_gaps(
     work-relevant gaps ranked by relevance score. Without `work`, returns the full
     outstanding set ordered uncurated > partial > deferred.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
 
     try:
         manifest = coverage.read_manifest(path)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
+        raise ToolError(str(e)) from e
 
     conn = _conn()
     try:
@@ -745,22 +727,21 @@ def ism_coverage_gaps(
             sections=manifest.scope.get("sections"),
         )
     except ValueError as e:
-        return json.dumps({"error": f"scope: {e}"})
+        raise ToolError(f"scope: {e}") from e
 
-    applicable: list[dict] | None = None
+    applicable: list[models.ApplicableEntry] | None = None
     if work is not None:
-        raw = json.loads(
-            ism_applicable(
+        try:
+            raw = _applicable_result(
                 work,
                 classification=manifest.scope.get("classification"),
                 maturity=manifest.scope.get("maturity"),
                 tags=manifest.scope.get("sections"),
                 limit=200,
             )
-        )
-        if "error" in raw:
-            return json.dumps({"error": f"ism_applicable: {raw['error']}"})
-        applicable = raw.get("results") or []
+        except ToolError as e:
+            raise ToolError(f"ism_applicable: {e}") from e
+        applicable = list(raw["results"])
 
     result = coverage.compute_gaps(
         manifest,
@@ -769,14 +750,7 @@ def ism_coverage_gaps(
         limit=_clamp_limit(limit),
         canonical=lambda i: store.normalise_identifier(conn, i) or i,
     )
-    return json.dumps(
-        {
-            "scope": manifest.scope,
-            "work": work,
-            **result,
-        },
-        indent=2,
-    )
+    return {"scope": manifest.scope, "work": work, **result}  # type: ignore[typeddict-item]
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -784,7 +758,7 @@ def ism_coverage_impact(
     project_path: str | None = None,
     target_version: str | None = None,
     limit: int = 50,
-) -> str:
+) -> models.ImpactResult:
     """Report what a newer ISM version means for the project's coverage. Never writes.
 
     Buckets covered/partial entries into re_review (control changed since it was
@@ -794,23 +768,18 @@ def ism_coverage_impact(
     when `project_path` is omitted. Run this after ingesting a new ISM release, then
     curate the buckets with ism_coverage_upsert.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
     try:
         manifest = coverage.read_manifest(path)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
+        raise ToolError(str(e)) from e
 
     conn = _conn()
     target = (
         target_version or manifest.scope.get("baseline_version") or store.get_active_version(conn)
     )
     if target is None or store.get_version(conn, target) is None:
-        return json.dumps(
-            {"error": f"no such target version: {target}", "hint": "call ism_versions"}
-        )
+        raise ToolError(f"no such target version: {target}. call ism_versions")
 
     try:
         in_scope_target = store.list_in_scope(
@@ -821,7 +790,7 @@ def ism_coverage_impact(
             version=target,
         )
     except ValueError as e:
-        return json.dumps({"error": f"scope: {e}"})
+        raise ToolError(f"scope: {e}") from e
 
     def lookup(version: str, identifier: str):
         return store.get_control(conn, identifier, version=version)
@@ -836,7 +805,7 @@ def ism_coverage_impact(
         limit=_clamp_limit(limit),
         canonical=lambda i: store.normalise_identifier(conn, i) or i,
     )
-    return json.dumps({"manifest_path": str(path), **result}, indent=2)
+    return {"manifest_path": str(path), **result}  # type: ignore[typeddict-item]
 
 
 def run() -> None:
