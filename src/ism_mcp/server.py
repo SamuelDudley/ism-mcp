@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
 import sqlite3
@@ -522,20 +521,20 @@ def _render_result(m: dict, verbose: bool) -> models.ApplicableEntry:
     }
 
 
-def _find_manifest_or_error(project_path: str | None) -> tuple[Path | None, dict | None]:
+def _find_manifest(project_path: str | None) -> Path:
     start = Path(project_path) if project_path else Path.cwd()
     found = coverage.find_manifest(start)
     if found is None:
-        return None, {
-            "error": "no manifest found",
-            "hint": (
-                "create .ism-coverage.toml at the project root with at minimum a [scope] section"
-            ),
-        }
-    return found, None
+        raise ToolError(
+            "no manifest found. "
+            "create .ism-coverage.toml at the project root with at minimum a [scope] section"
+        )
+    return found
 
 
-def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) -> dict:
+def _manifest_to_json(
+    manifest: coverage.Manifest, status_filter: str | None
+) -> models.CoverageReadResult:
     controls = {}
     summary = {
         "total_curated": len(manifest.controls),
@@ -572,23 +571,22 @@ def _manifest_to_json(manifest: coverage.Manifest, status_filter: str | None) ->
 
 
 @mcp.tool(annotations=READ_ONLY)
-def ism_coverage_read(project_path: str | None = None, status_filter: str | None = None) -> str:
+def ism_coverage_read(
+    project_path: str | None = None, status_filter: models.Status | None = None
+) -> models.CoverageReadResult:
     """Read the project's coverage manifest (`.ism-coverage.toml`). Never writes.
 
     Returns scope, summary counts, and curated entries. Walks up from cwd to find the
-    manifest if `project_path` is omitted and returns `{"error": ...}` when none is
-    found. `status_filter` narrows the controls map to a single status
+    manifest if `project_path` is omitted and fails when none is found.
+    `status_filter` narrows the controls map to a single status
     (`covered|partial|not-applicable|deferred`) while summary stays unfiltered. To
     see what is missing rather than what is curated, use ism_coverage_gaps.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
     try:
         manifest = coverage.read_manifest(path)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
+        raise ToolError(str(e)) from e
 
     conn = _conn()
     extra_warnings: list[str] = list(manifest.warnings)
@@ -604,7 +602,7 @@ def ism_coverage_read(project_path: str | None = None, status_filter: str | None
         warnings=extra_warnings,
     )
 
-    return json.dumps(_manifest_to_json(manifest, status_filter), indent=2)
+    return _manifest_to_json(manifest, status_filter)
 
 
 def _is_in_scope(scope: dict, control) -> bool:
@@ -633,7 +631,7 @@ def _is_in_scope(scope: dict, control) -> bool:
 @mcp.tool(annotations=WRITES_MANIFEST)
 def ism_coverage_upsert(
     identifier: str,
-    status: str,
+    status: models.Status,
     how_met: str,
     last_reviewed: str | None = None,
     reviewed_by: str | None = None,
@@ -644,7 +642,7 @@ def ism_coverage_upsert(
     urls: list[dict] | None = None,
     attachments: list[dict] | None = None,
     project_path: str | None = None,
-) -> str:
+) -> models.UpsertResult:
     """Create or update one entry in the coverage manifest (`.ism-coverage.toml`).
 
     The only tool that writes to disk. It rewrites the manifest file atomically and an
@@ -652,34 +650,27 @@ def ism_coverage_upsert(
     covered, partial, not-applicable, or deferred. Validates identifier against the
     ISM DB, requires every attachment path to resolve on disk and every url and
     attachment to carry a description. `last_reviewed` defaults to today. Returns the
-    updated summary plus warnings, or `{"error": ...}` on validation failure.
+    action taken plus warnings and fails on validation errors.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
 
     conn = _conn()
     control = store.get_control(conn, identifier)
     if control is None:
-        return json.dumps(
-            {
-                "error": (
-                    f"no such control: {identifier}. "
-                    "Use ism_search or ism_list_topics to find the right id."
-                )
-            }
+        raise ToolError(
+            f"no such control: {identifier}. "
+            "Use ism_search or ism_list_topics to find the right id."
         )
 
     try:
         last_reviewed_date = _date.fromisoformat(last_reviewed) if last_reviewed else _date.today()
         next_review_date = _date.fromisoformat(next_review) if next_review else None
     except ValueError as e:
-        return json.dumps({"error": f"date format: {e}"})
+        raise ToolError(f"date format: {e}") from e
 
     entry = coverage.ManifestEntry(
         identifier=identifier,
-        status=status,  # type: ignore[arg-type]
+        status=status,
         how_met=how_met,
         last_reviewed=last_reviewed_date,
         reviewed_by=reviewed_by,
@@ -693,17 +684,15 @@ def ism_coverage_upsert(
 
     try:
         result = coverage.upsert_entry(path, entry)
-    except ValueError as e:
-        return json.dumps({"error": str(e)})
-    except FileNotFoundError as e:
-        return json.dumps({"error": str(e)})
+    except (ValueError, FileNotFoundError) as e:
+        raise ToolError(str(e)) from e
 
     manifest = coverage.read_manifest(path)
     result["warnings"].extend(manifest.warnings)
     if not _is_in_scope(manifest.scope, control):
         result["warnings"].append(f"{identifier}: identifier is outside declared scope")
 
-    return json.dumps(result, indent=2)
+    return result  # type: ignore[return-value]
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -711,7 +700,7 @@ def ism_coverage_gaps(
     work: str | None = None,
     project_path: str | None = None,
     limit: int = 50,
-) -> str:
+) -> models.GapsResult:
     """Return outstanding in-scope controls (uncurated, partial, deferred). Never writes.
 
     The complement of ism_coverage_read: read reports what is curated, gaps reports
@@ -721,15 +710,12 @@ def ism_coverage_gaps(
     work-relevant gaps ranked by relevance score. Without `work`, returns the full
     outstanding set ordered uncurated > partial > deferred.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
 
     try:
         manifest = coverage.read_manifest(path)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
+        raise ToolError(str(e)) from e
 
     conn = _conn()
     try:
@@ -740,7 +726,7 @@ def ism_coverage_gaps(
             sections=manifest.scope.get("sections"),
         )
     except ValueError as e:
-        return json.dumps({"error": f"scope: {e}"})
+        raise ToolError(f"scope: {e}") from e
 
     applicable: list[dict] | None = None
     if work is not None:
@@ -763,14 +749,7 @@ def ism_coverage_gaps(
         limit=_clamp_limit(limit),
         canonical=lambda i: store.normalise_identifier(conn, i) or i,
     )
-    return json.dumps(
-        {
-            "scope": manifest.scope,
-            "work": work,
-            **result,
-        },
-        indent=2,
-    )
+    return {"scope": manifest.scope, "work": work, **result}  # type: ignore[typeddict-item]
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -778,7 +757,7 @@ def ism_coverage_impact(
     project_path: str | None = None,
     target_version: str | None = None,
     limit: int = 50,
-) -> str:
+) -> models.ImpactResult:
     """Report what a newer ISM version means for the project's coverage. Never writes.
 
     Buckets covered/partial entries into re_review (control changed since it was
@@ -788,23 +767,18 @@ def ism_coverage_impact(
     when `project_path` is omitted. Run this after ingesting a new ISM release, then
     curate the buckets with ism_coverage_upsert.
     """
-    path, err = _find_manifest_or_error(project_path)
-    if err is not None:
-        return json.dumps(err)
-    assert path is not None
+    path = _find_manifest(project_path)
     try:
         manifest = coverage.read_manifest(path)
     except ValueError as e:
-        return json.dumps({"error": str(e)})
+        raise ToolError(str(e)) from e
 
     conn = _conn()
     target = (
         target_version or manifest.scope.get("baseline_version") or store.get_active_version(conn)
     )
     if target is None or store.get_version(conn, target) is None:
-        return json.dumps(
-            {"error": f"no such target version: {target}", "hint": "call ism_versions"}
-        )
+        raise ToolError(f"no such target version: {target}. call ism_versions")
 
     try:
         in_scope_target = store.list_in_scope(
@@ -815,7 +789,7 @@ def ism_coverage_impact(
             version=target,
         )
     except ValueError as e:
-        return json.dumps({"error": f"scope: {e}"})
+        raise ToolError(f"scope: {e}") from e
 
     def lookup(version: str, identifier: str):
         return store.get_control(conn, identifier, version=version)
@@ -830,7 +804,7 @@ def ism_coverage_impact(
         limit=_clamp_limit(limit),
         canonical=lambda i: store.normalise_identifier(conn, i) or i,
     )
-    return json.dumps({"manifest_path": str(path), **result}, indent=2)
+    return {"manifest_path": str(path), **result}  # type: ignore[typeddict-item]
 
 
 def run() -> None:
