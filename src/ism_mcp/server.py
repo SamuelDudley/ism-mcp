@@ -27,11 +27,12 @@ mcp = FastMCP(
     "ism-mcp",
     instructions=(
         "Query layer over a local SQLite copy of the ASD Information Security Manual "
-        "(ISM), including Essential Eight maturity data. All tools return JSON strings "
-        'and report failures as {"error": ...} rather than raising. Data is as fresh as '
-        "the last ingested ISM release (check with ism_stats). Every tool is read-only "
-        "except ism_coverage_upsert, which edits the project's .ism-coverage.toml. "
-        "No network access, auth, or rate limits."
+        "(ISM), including Essential Eight maturity data. Every tool returns a typed "
+        "structured result matching its published output schema, and failures arrive "
+        "as tool errors (isError) with a message, never as error payloads. Data is as "
+        "fresh as the last ingested ISM release (check with ism_stats). Every tool is "
+        "read-only except ism_coverage_upsert, which edits the project's "
+        ".ism-coverage.toml. No network access, auth, or rate limits."
     ),
 )
 
@@ -728,7 +729,7 @@ def ism_coverage_gaps(
     except ValueError as e:
         raise ToolError(f"scope: {e}") from e
 
-    applicable: list[dict] | None = None
+    applicable: list[models.ApplicableEntry] | None = None
     if work is not None:
         try:
             raw = _applicable_result(

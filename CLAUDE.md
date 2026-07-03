@@ -12,6 +12,7 @@ Read this before doing any work in this repo. Update it when conventions change.
 src/ism_mcp/         the package
   __init__.py
   __main__.py        CLI: fetch, ingest, ingest-history, update, serve, install
+  models.py          vocabulary literals + response TypedDicts for the MCP tools
   store.py           version-keyed SQLite schema + queries + FTS5 + version registry
   oscal.py           parse an OSCAL ISM catalog into version metadata and control rows
   fetch.py           clone/pull the ACSC ism-oscal mirror, list tags, read files at a tag

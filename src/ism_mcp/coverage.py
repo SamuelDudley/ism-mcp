@@ -6,7 +6,7 @@ import contextlib
 import os
 import tempfile
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -285,7 +285,7 @@ _STATUS_PRIORITY = {"uncurated": 0, "partial": 1, "deferred": 2}
 def compute_gaps(
     manifest: Manifest,
     in_scope: list,
-    applicable: list[dict] | None = None,
+    applicable: Sequence[Mapping[str, Any]] | None = None,
     limit: int = 50,
     canonical: Callable[[str], str] | None = None,
 ) -> dict:
@@ -410,7 +410,9 @@ def compute_impact(
         old = lookup(against, ident)
         fields = changed_fields(old, target) if old is not None else []
         if fields:
-            reworded = old is not None and "reworded" in fields
+            reworded_diff = None
+            if old is not None and "reworded" in fields:
+                reworded_diff = diff_text(old.description, target.description)
             re_review.append(
                 {
                     "identifier": ident,
@@ -418,7 +420,7 @@ def compute_impact(
                     "reviewed_against": against,
                     "changes": fields,
                     "how_met": entry.how_met,
-                    "diff": diff_text(old.description, target.description) if reworded else None,
+                    "diff": reworded_diff,
                 }
             )
         else:
