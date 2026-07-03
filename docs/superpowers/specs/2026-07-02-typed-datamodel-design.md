@@ -136,7 +136,7 @@ Not errors (unchanged): `_conn()` missing-DB `RuntimeError` and `IncompatibleSch
 4. Enum-typed inputs reject spellings the old normaliser or validator accepted (`"official sensitive"`, `maturity=2`, lowercase canonical codes on `ism_list_by_classification`, unknown `change_types` names, invalid `status_filter`). Rejection happens at the MCP layer with a pydantic message.
 5. `ism_coverage_gaps` calls the applicable logic directly (shared helper) instead of `json.loads`-ing its own sibling tool's string output.
 6. The JSON text block switches serialiser: non-ASCII characters in control text render as raw UTF-8 instead of `\u` escapes.
-7. Hand-edited manifests carrying non-string scalars in typed fields (`how_met = 3`, `files = [1]`) now fail `ism_coverage_read` with a validation error instead of passing through. `status`, `urls`, `attachments`, `scope`, and `project` remain loose by design.
+7. Hand-edited manifests carrying non-string scalars in typed fields (`how_met = 3`, `files = [1]`, `reviewed_against = 2025.12`) now fail every manifest-reading tool with a clean manifest validation error raised by `coverage._entry_from_dict`, instead of passing through (or, worse, surfacing as an opaque output-schema validation dump from gaps or impact). `urls`, `attachments`, `scope`, and `project` remain loose by design, and `status` accepts any string on read.
 
 ## Internal refactors
 
@@ -161,7 +161,7 @@ Existing suite: 53 `json.loads(tool(...))` sites lose the `json.loads` (tools no
 
 ## Migration and blast radius
 
-`server.py` (all 17 tools plus helpers), new `models.py`, `coverage.py` (Status import, `compute_gaps`/`compute_impact` None-backfill and annotations), 6 test files touched, README gains a short error-contract paragraph (isError, no `{"error": ...}` payloads). `install.py`: no change, its generated guidance does not describe error behaviour. CLAUDE.md repository layout gains `models.py`; HANDOVER.md updates at branch close. Tool annotations (`READ_ONLY`, `WRITES_MANIFEST`) are preserved on every decorator. No store/oscal/ingest/retrieve changes: they already return typed dataclasses or plain dicts; `diff.py` is untouched (the history `hint`/`first_seen`/`last_seen` backfill happens in the tool body).
+`server.py` (all 17 tools plus helpers), new `models.py`, `coverage.py` (Status import, `compute_gaps`/`compute_impact` None-backfill and annotations), 6 test files touched, README gains a short error-contract paragraph (isError, no `{"error": ...}` payloads). `install.py`: no change, its generated guidance does not describe error behaviour. CLAUDE.md repository layout gains `models.py`; HANDOVER.md updates at branch close. Tool annotations (`READ_ONLY`, `WRITES_MANIFEST`) are preserved on every decorator. `store.py` changes only the `Control.as_dict` return annotation to `models.ControlRecord`. No oscal/ingest/retrieve changes: they already return typed dataclasses or plain dicts; `diff.py` is untouched (the history `hint`/`first_seen`/`last_seen` backfill happens in the tool body).
 
 ## Non-goals
 
